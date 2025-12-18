@@ -3,6 +3,8 @@ const path = require('path');
 const express = require('express');
 const createRouter = require('./routes');
 const createAuthMiddleware = require('./auth');
+const ProcessManager = require('./processManager');
+const ComfyUIClient = require('./comfyuiClient');
 
 function loadConfig() {
   const configPath = process.env.VIDAX_CONFIG || path.join(process.cwd(), 'config', 'vidax.json');
@@ -19,10 +21,12 @@ function loadConfig() {
 
 function startServer() {
   const config = loadConfig();
+  const comfyuiClient = new ComfyUIClient(config.comfyui || {});
+  const processManager = new ProcessManager(config.comfyui || {}, comfyuiClient);
   const app = express();
   app.use(express.json());
   app.use(createAuthMiddleware(config));
-  app.use('/', createRouter(config));
+  app.use('/', createRouter(config, { processManager, comfyuiClient }));
   const port = config.port || 3000;
   const host = config.bind || '127.0.0.1';
   app.listen(port, host, () => {

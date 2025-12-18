@@ -6,6 +6,18 @@
 
 ## Endpunkte
 
+### GET /health
+- Antwort `200 OK` mit `{ok:true}` als Minimal-Readiness.
+
+### GET /comfyui/health
+- Antwort `200 OK` mit `{ok:boolean, ...}` aus ComfyUI Health-Check.
+- `ok=false` wenn ComfyUI nicht erreichbar.
+
+### POST /comfyui/start
+- Startet ComfyUI falls Health nicht `ok` und `auto_start=true`.
+- Antwort `202 Accepted` mit `{ok:true,status:"ready",url:"..."}`.
+- Fehler: `500` mit Fehlercode `COMFYUI_TIMEOUT|COMFYUI_START_FAILED`.
+
 ### POST /jobs
 - Body: vollständiges Job-JSON laut `JOB_SCHEMA`.
 - Aktionen: Validierung, `run_id` erzeugen, Workdir + `manifest.json` + `logs/events.jsonl` anlegen, Status `queued`.
@@ -17,11 +29,15 @@
 
 ### POST /jobs/:id/start
 - Startet Verarbeitung für vorhandenen Lauf.
+- Ablauf:
+  - Job + Paths aus Memory/Disk laden.
+  - `processManager.ensureComfyUI()` sorgt für laufendes ComfyUI + Health `ok`.
+  - Runner `comfyui`-Phase wird mit Kontext `{ comfyuiClient, processManager }` ausgeführt.
 - Antwort `202 Accepted` bei Start, Status landet in Manifest/Logs.
-- Fehler: `404` wenn Job oder Manifest fehlt.
+- Fehler: `404` wenn Job oder Manifest fehlt; `500` wenn ComfyUI nicht erreichbar.
 
 ### GET /jobs/:id
-- Liefert Statusübersicht (exit_status + Phasen + Manifestpfad).
+- Liefert Statusübersicht (`run_status`, `exit_status`, Phasen + Manifestpfad).
 - Antwort `200 OK` mit JSON.
 - Fehler: `404` wenn Run unbekannt.
 
@@ -34,6 +50,7 @@
 - Fehler: `404` wenn unbekannt oder Logs fehlen.
 
 ## Statusmodell Stufe 1
-- `queued` → `running` → `success|failed`.
-- Phasen (prepare, comfyui, stabilize, lipsync, encode) werden im Manifest mit `queued|running|skipped|completed` markiert.
+- Lauf-Status: `run_status` mit `queued|running|completed|failed`.
+- Ergebnis-Status: `exit_status` mit `success|failed|partial|null` (kein `queued|running`).
+- Phasen (prepare, comfyui, stabilize, lipsync, encode) werden im Manifest mit `queued|running|skipped|completed|failed` markiert.
 - `final.mp4` ist ein Platzhalter; echte Generierung folgt in Stufe 2.

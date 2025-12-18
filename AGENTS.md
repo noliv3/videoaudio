@@ -16,6 +16,8 @@ Scope: Repository root and all subdirectories.
 - Use deterministic terminology: surface required parameters (fps, seed, resolution, target_frames) and emphasize audio-driven timing.
 - When describing flows, prefer bullet lists or tables over long prose. Cite defaults and validation rules clearly.
 - Keep scope lean: focus on job specification, orchestration steps, and integration touchpoints (ComfyUI REST, LipSync CLI, ffmpeg mux). Avoid embedding actual workflow graphs.
+- Run manifests now separate `run_status` (queued/running/completed/failed) from `exit_status` (success/failed/partial/null).
+- VIDAX must manage ComfyUI lifecycle (health/start) before comfyui runner phase; surface endpoints in VIDAX docs accordingly.
 
 ## Commit & PR
 - Ensure each change is committed on the current branch and accompanied by a PR message via `make_pr` after committing.

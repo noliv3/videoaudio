@@ -7,9 +7,34 @@ const { buildPaths, prepareWorkdir, registerRun, resolveRun } = require('../runn
 const manifest = require('../runner/manifest');
 const RunnerLogger = require('../runner/logger');
 
-function createRouter(config) {
+function createRouter(config, deps = {}) {
+  const { processManager, comfyuiClient } = deps;
   const router = express.Router();
   const jobs = new Map();
+
+  router.get('/health', (_req, res) => {
+    res.json({ ok: true });
+  });
+
+  router.get('/comfyui/health', async (_req, res) => {
+    if (!comfyuiClient) {
+      return res.status(503).json({ ok: false, error: 'client_missing' });
+    }
+    const status = await comfyuiClient.health();
+    res.json(status);
+  });
+
+  router.post('/comfyui/start', async (_req, res) => {
+    if (!processManager) {
+      return res.status(503).json({ ok: false, error: 'manager_missing' });
+    }
+    try {
+      const result = await processManager.ensureComfyUI();
+      res.status(202).json({ ok: true, status: result.status, url: result.url });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.code || 'COMFYUI_START_FAILED', message: err.message });
+    }
+  });
 
   router.post('/jobs', (req, res) => {
     const job = req.body;
@@ -39,7 +64,7 @@ function createRouter(config) {
     if (!data) {
       return res.status(404).json({ error: 'manifest_missing' });
     }
-    res.json({ run_id: req.params.id, status: data.exit_status, phases: data.phases || {}, manifest: mPath });
+    res.json({ run_id: req.params.id, status: data.run_status || data.status, exit_status: data.exit_status, phases: data.phases || {}, manifest: mPath });
   });
 
   router.get('/jobs/:id/manifest', (req, res) => {
@@ -78,7 +103,7 @@ function createRouter(config) {
     }
     res.status(202).json({ run_id: req.params.id, status: 'started' });
     try {
-      await runJob(job, { runId: req.params.id });
+      await runJob(job, { runId: req.params.id, vidax: { comfyuiClient, processManager } });
     } catch (err) {
       // errors already captured in manifest
     }

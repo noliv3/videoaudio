@@ -18,6 +18,7 @@ function baseManifest(job, runId) {
   return {
     run_id: runId,
     status: 'queued',
+    run_status: 'queued',
     timestamps: {
       created: now,
       started: null,
@@ -42,7 +43,7 @@ function baseManifest(job, runId) {
       comfyui_seed: job?.comfyui?.seed ?? null,
       lipsync_seed: null
     },
-    exit_status: 'queued',
+    exit_status: null,
     phases: {}
   };
 }
@@ -63,7 +64,8 @@ function updateManifest(manifestPath, updater) {
 function markStarted(manifestPath) {
   return updateManifest(manifestPath, (m) => {
     m.status = 'running';
-    m.exit_status = 'running';
+    m.run_status = 'running';
+    m.exit_status = null;
     m.timestamps = m.timestamps || {};
     m.timestamps.started = new Date().toISOString();
     return m;
@@ -72,8 +74,10 @@ function markStarted(manifestPath) {
 
 function markFinished(manifestPath, exitStatus) {
   return updateManifest(manifestPath, (m) => {
-    m.status = exitStatus === 'success' ? 'completed' : 'failed';
-    m.exit_status = exitStatus;
+    const terminal = exitStatus === 'failed' ? 'failed' : 'completed';
+    m.status = terminal;
+    m.run_status = terminal;
+    m.exit_status = exitStatus ?? null;
     m.timestamps = m.timestamps || {};
     m.timestamps.finished = new Date().toISOString();
     return m;

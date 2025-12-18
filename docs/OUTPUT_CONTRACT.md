@@ -29,7 +29,8 @@ workdir/
 - `effective_params` (object: final angewandte Job-Parameter inkl. Defaults)
 - `versions` (object: runner, comfyui_api, lipsync_provider, ffmpeg)
 - `seeds` (object: comfyui_seed, lipsync_seed falls relevant)
-- `exit_status` (string enum: `success`, `failed`, `partial`)
+- `run_status` (string enum: `queued`, `running`, `completed`, `failed`)
+- `exit_status` (string enum: `success`, `failed`, `partial`, `null`)
 
 ## Cleanup-, Resume- und Overwrite-Regeln
 - `workdir` muss erzeugt oder geleert werden können; fehlende Schreibrechte → `OUTPUT_WRITE_FAILED`.
