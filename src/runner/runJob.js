@@ -4,41 +4,67 @@ const validateJob = require('./validateJob');
 const { buildPaths, prepareWorkdir, registerRun } = require('./paths');
 const RunnerLogger = require('./logger');
 const manifest = require('./manifest');
+const { getAudioDurationSeconds } = require('./audio');
+const { AppError } = require('../errors');
+
+function ensureOutputRules(paths, resume) {
+  const manifestExists = fs.existsSync(paths.manifest);
+  const finalExists = fs.existsSync(paths.final);
+  if (resume) {
+    if (!manifestExists) {
+      throw new AppError('OUTPUT_WRITE_FAILED', 'resume requires existing manifest', { manifest: paths.manifest });
+    }
+    if (finalExists) {
+      throw new AppError('OUTPUT_WRITE_FAILED', 'cannot resume when final output already exists', { final: paths.final });
+    }
+    return;
+  }
+  if (finalExists) {
+    throw new AppError('OUTPUT_WRITE_FAILED', 'final output already exists; use --resume to continue', { final: paths.final });
+  }
+}
 
 async function runJob(job, options = {}) {
   const validation = validateJob(job);
   if (!validation.valid) {
-    const error = new Error('Job validation failed');
-    error.details = validation;
-    throw error;
+    throw new AppError('VALIDATION_ERROR', 'Job validation failed', { errors: validation.errors });
   }
 
-  const runId = options.runId || randomUUID();
+  const resume = !!options.resume;
+  const initialRunId = options.runId || randomUUID();
+  const paths = buildPaths(job, initialRunId);
+  ensureOutputRules(paths, resume);
+
+  const existingManifest = resume ? manifest.readManifest(paths.manifest) : null;
+  const runId = existingManifest?.run_id || initialRunId;
+  paths.runId = runId;
   const comfyuiClient = options?.vidax?.comfyuiClient;
   const processManager = options?.vidax?.processManager;
-  const paths = buildPaths(job, runId);
   prepareWorkdir(paths);
   registerRun(runId, paths.base);
 
   fs.writeFileSync(paths.job, JSON.stringify(job, null, 2));
-  manifest.createDraft(paths.manifest, job, runId);
+  if (!resume || !existingManifest) {
+    manifest.createDraft(paths.manifest, job, runId);
+  }
   const logger = new RunnerLogger(paths.events);
-  logger.log({ level: 'info', stage: 'init', run_id: runId, message: 'job queued' });
+  logger.log({ level: 'info', stage: 'init', run_id: runId, message: resume ? 'job resume requested' : 'job queued' });
 
   try {
     manifest.markStarted(paths.manifest);
     manifest.recordPhase(paths.manifest, 'prepare', 'running');
     logger.log({ level: 'info', stage: 'prepare', message: 'preparing inputs' });
+    const audioDurationSeconds = getAudioDurationSeconds(job.input?.audio);
     const prepareDetails = {
-      audioDurationSeconds: job.input?.audio ? 0 : null,
+      audioDurationSeconds,
       fps: job.determinism?.fps ?? null,
       frameRounding: job.determinism?.frame_rounding || 'ceil',
       comfyuiSeed: job.comfyui?.seed ?? null,
       hashes: {
         start: job.input?.start_image || job.input?.start_video || null,
         audio: job.input?.audio || null,
-        end: job.input?.end_image || null
-      }
+        end: job.input?.end_image || null,
+      },
     };
     manifest.recordPrepare(paths.manifest, prepareDetails);
     manifest.recordPhase(paths.manifest, 'prepare', 'completed');
@@ -60,8 +86,7 @@ async function runJob(job, options = {}) {
         throw err;
       }
       if (!comfyuiClient) {
-        const err = new Error('ComfyUI client unavailable');
-        err.code = 'COMFYUI_CLIENT_MISSING';
+        const err = new AppError('COMFYUI_BAD_RESPONSE', 'ComfyUI client unavailable');
         manifest.recordPhase(paths.manifest, 'comfyui', 'failed', { workflow_id: workflowId, error: err.message, code: err.code });
         throw err;
       }
@@ -97,16 +122,20 @@ async function runJob(job, options = {}) {
     if (!fs.existsSync(paths.final)) {
       fs.writeFileSync(paths.final, 'placeholder');
     }
-    manifest.recordPhase(paths.manifest, 'encode', 'completed');
+    manifest.recordPhase(paths.manifest, 'encode', 'completed', { note: 'placeholder file written' });
 
-    manifest.markFinished(paths.manifest, 'success');
-    logger.log({ level: 'info', stage: 'done', run_id: runId, message: 'job complete' });
+    manifest.markFinished(paths.manifest, 'partial', { partial_reason: 'encode_stub' });
+    logger.log({ level: 'info', stage: 'done', run_id: runId, message: 'job complete with partial output' });
 
-    return { runId, status: 'success', paths };
+    return { runId, status: 'partial', paths };
   } catch (err) {
-    manifest.markFinished(paths.manifest, 'failed');
-    logger.log({ level: 'error', stage: 'error', message: err.message });
-    throw err;
+    manifest.markFinished(paths.manifest, 'failed', { error: err.message });
+    logger.log({ level: 'error', stage: 'error', message: err.message, code: err.code });
+    if (err instanceof AppError) {
+      throw err;
+    }
+    const wrapped = new AppError(err.code || 'FFMPEG_FAILED', err.message, err.details || {});
+    throw wrapped;
   }
 }
 

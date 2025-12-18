@@ -3,6 +3,7 @@
 ## Authentifizierung
 - Header `X-API-Key` ist Pflicht für alle Endpunkte.
 - Key-Quelle: `VIDAX_API_KEY` env oder `config/vidax.json` Feld `apiKey`.
+- Fehlender Key führt zu `401`, falscher Key zu `403`; ohne Key startet der Server nicht.
 
 ## Endpunkte
 
@@ -25,16 +26,17 @@
   ```json
   {"run_id":"<id>","status":"queued","manifest":"<path>","workdir":"<abs>"}
   ```
-- Fehler: `400` bei `validation_failed`, `401` ohne/mit falschem API Key.
+- Fehler: `400` bei `VALIDATION_ERROR`, `401/403` bei Auth-Fehlern, `415` bei `UNSUPPORTED_FORMAT`.
 
 ### POST /jobs/:id/start
 - Startet Verarbeitung für vorhandenen Lauf.
 - Ablauf:
   - Job + Paths aus Memory/Disk laden.
+  - Overwrite-Regeln: vorhandenes `final.mp4` → `OUTPUT_WRITE_FAILED`; Resume nur erlaubt, wenn Manifest existiert und `final.mp4` fehlt.
   - `processManager.ensureComfyUI()` sorgt für laufendes ComfyUI + Health `ok`.
   - Runner `comfyui`-Phase wird mit Kontext `{ comfyuiClient, processManager }` ausgeführt.
 - Antwort `202 Accepted` bei Start, Status landet in Manifest/Logs.
-- Fehler: `404` wenn Job oder Manifest fehlt; `500` wenn ComfyUI nicht erreichbar.
+- Fehler: `404` wenn Job oder Manifest fehlt; `415` bei Audioformatproblemen; `424` bei ComfyUI-Fehlern.
 
 ### GET /jobs/:id
 - Liefert Statusübersicht (`run_status`, `exit_status`, Phasen + Manifestpfad).
@@ -53,4 +55,4 @@
 - Lauf-Status: `run_status` mit `queued|running|completed|failed`.
 - Ergebnis-Status: `exit_status` mit `success|failed|partial|null` (kein `queued|running`).
 - Phasen (prepare, comfyui, stabilize, lipsync, encode) werden im Manifest mit `queued|running|skipped|completed|failed` markiert.
-- `final.mp4` ist ein Platzhalter; echte Generierung folgt in Stufe 2.
+- `final.mp4` ist ein Platzhalter; echte Generierung folgt in Stufe 2. Resume setzt `exit_status=partial` und lässt `final.mp4` unüberschrieben, bis echtes Encoding vorhanden ist.
