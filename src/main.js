@@ -60,7 +60,7 @@ yargs(hideBin(process.argv))
       console.error('manifest missing');
       process.exit(1);
     }
-    console.log(JSON.stringify({ run_id: args.run_id, status: data.exit_status, phases: data.phases || {} }, null, 2));
+    console.log(JSON.stringify({ run_id: args.run_id, status: data.run_status || data.status, exit_status: data.exit_status, phases: data.phases || {} }, null, 2));
   })
   .command('logs <run_id>', 'print run logs', (y) => y.positional('run_id', { type: 'string' }), (args) => {
     const run = resolveRun(args.run_id);
