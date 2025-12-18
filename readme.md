@@ -9,5 +9,7 @@ Spezifikation-first Repository für einen lokalen, skriptbaren Video+Audio-Runne
 - **ComfyUI & LipSync Schnittstellen:** Parameter- und Retry-Verträge in [`docs/COMFYUI_INTERFACE.md`](docs/COMFYUI_INTERFACE.md) und [`docs/LIPSYNC_INTERFACE.md`](docs/LIPSYNC_INTERFACE.md).
 - **Outputs & Fehler:** Verbindliche Artefakte in [`docs/OUTPUT_CONTRACT.md`](docs/OUTPUT_CONTRACT.md) und Fehlercodes in [`docs/ERROR_MODEL.md`](docs/ERROR_MODEL.md).
 - **Offene Entscheidungen:** Optionen und Defaults in [`docs/OPEN_DECISIONS.md`](docs/OPEN_DECISIONS.md).
+- **VIDAX HTTP API:** Endpunkte, Auth und Statusmodell in [`docs/VIDAX_API.md`](docs/VIDAX_API.md).
+- **Sicherheit:** API-Key-Pflicht und Bindungshinweise in [`docs/SECURITY.md`](docs/SECURITY.md).
 
 Alle Spezifikationen sind normativ; diese README dient nur als Einstieg und Link-Sammlung.
