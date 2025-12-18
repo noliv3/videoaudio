@@ -22,14 +22,16 @@ function baseManifest(job, runId) {
     timestamps: {
       created: now,
       started: null,
-      finished: null
+      finished: null,
     },
     input_hashes: {
       start: null,
       audio: null,
-      end: null
+      end: null,
     },
     audio_duration_seconds: null,
+    visual_target_duration_seconds: null,
+    buffer_applied: null,
     fps,
     target_frames: null,
     effective_params: job || {},
@@ -37,14 +39,16 @@ function baseManifest(job, runId) {
       runner: '0.1.0',
       comfyui_api: 'pending',
       lipsync_provider: 'pending',
-      ffmpeg: 'pending'
+      ffmpeg: 'unknown',
+      ffprobe: 'unknown',
     },
     seeds: {
       comfyui_seed: job?.comfyui?.seed ?? null,
-      lipsync_seed: null
+      lipsync_seed: null,
     },
     exit_status: null,
-    phases: {}
+    partial_reason: null,
+    phases: {},
   };
 }
 
@@ -66,20 +70,25 @@ function markStarted(manifestPath) {
     m.status = 'running';
     m.run_status = 'running';
     m.exit_status = null;
+    m.partial_reason = null;
     m.timestamps = m.timestamps || {};
     m.timestamps.started = new Date().toISOString();
     return m;
   });
 }
 
-function markFinished(manifestPath, exitStatus) {
+function markFinished(manifestPath, exitStatus, extra = {}) {
   return updateManifest(manifestPath, (m) => {
     const terminal = exitStatus === 'failed' ? 'failed' : 'completed';
     m.status = terminal;
     m.run_status = terminal;
     m.exit_status = exitStatus ?? null;
+    m.partial_reason = extra.partial_reason ?? m.partial_reason ?? null;
     m.timestamps = m.timestamps || {};
     m.timestamps.finished = new Date().toISOString();
+    if (extra.error) {
+      m.error = extra.error;
+    }
     return m;
   });
 }
@@ -90,7 +99,7 @@ function recordPhase(manifestPath, phase, status, extra = {}) {
     m.phases[phase] = {
       status,
       updated: new Date().toISOString(),
-      ...extra
+      ...extra,
     };
     return m;
   });
@@ -102,12 +111,14 @@ function recordPrepare(manifestPath, details) {
     const fps = details.fps ?? m.fps;
     const targetFrames = computeTargetFrames(audioDuration, fps, details.frameRounding);
     m.audio_duration_seconds = audioDuration;
+    m.visual_target_duration_seconds = audioDuration;
+    m.buffer_applied = details.bufferApplied ?? m.buffer_applied ?? null;
     m.fps = fps;
     m.target_frames = targetFrames;
     m.input_hashes = details.hashes || m.input_hashes || {};
     m.seeds = {
       ...m.seeds,
-      comfyui_seed: details.comfyuiSeed ?? m.seeds?.comfyui_seed ?? null
+      comfyui_seed: details.comfyuiSeed ?? m.seeds?.comfyui_seed ?? null,
     };
     return m;
   });
@@ -129,5 +140,5 @@ module.exports = {
   recordPhase,
   recordPrepare,
   readManifest,
-  computeTargetFrames
+  computeTargetFrames,
 };

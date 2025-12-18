@@ -14,4 +14,10 @@ Spezifikation-first Repository für einen lokalen, skriptbaren Video+Audio-Runne
 - **VIDAX HTTP API:** Endpunkte, Auth, Statusmodell (`run_status` vs. `exit_status`) und ComfyUI-Lifecycle in [`docs/VIDAX_API.md`](docs/VIDAX_API.md).
 - **Sicherheit:** API-Key-Pflicht und Bindungshinweise in [`docs/SECURITY.md`](docs/SECURITY.md).
 
+## Laufzeit-Notizen
+- CLI `run` respektiert `--resume`/`resume=1` (API) und verhindert Überschreiben von `final.mp4` ohne expliziten Resume.
+- Audio-Dauer wird zur Vorbereitung über `ffprobe` gemessen; Manifest füllt `audio_duration_seconds`, `visual_target_duration_seconds`, `fps` und `target_frames` gemäß Determinismus.
+- Platzhalter-Encoding setzt `exit_status=partial` mit `partial_reason=encode_stub`; vollständiger Encode folgt separat.
+- VIDAX verlangt einen gesetzten API-Key und liefert strukturierte Fehlermeldungen mit Codes/Retry-Hinweisen gemäß [`docs/ERROR_MODEL.md`](docs/ERROR_MODEL.md).
+
 Alle Spezifikationen sind normativ; diese README dient nur als Einstieg und Link-Sammlung.

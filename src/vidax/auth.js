@@ -1,12 +1,20 @@
+const { AppError, errorResponse } = require('../errors');
+
 function createAuthMiddleware(config) {
   const apiKey = process.env.VIDAX_API_KEY || config.apiKey;
   return (req, res, next) => {
     if (!apiKey) {
-      return res.status(500).json({ error: 'API key not configured' });
+      const err = new AppError('VALIDATION_ERROR', 'API key not configured');
+      return res.status(401).json(errorResponse(err));
     }
     const provided = req.get('X-API-Key');
-    if (!provided || provided !== apiKey) {
-      return res.status(401).json({ error: 'invalid api key' });
+    if (!provided) {
+      const err = new AppError('VALIDATION_ERROR', 'missing api key');
+      return res.status(401).json(errorResponse(err));
+    }
+    if (provided !== apiKey) {
+      const err = new AppError('VALIDATION_ERROR', 'invalid api key');
+      return res.status(403).json(errorResponse(err));
     }
     next();
   };

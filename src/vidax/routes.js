@@ -6,6 +6,32 @@ const runJob = require('../runner/runJob');
 const { buildPaths, prepareWorkdir, registerRun, resolveRun } = require('../runner/paths');
 const manifest = require('../runner/manifest');
 const RunnerLogger = require('../runner/logger');
+const { AppError, errorResponse } = require('../errors');
+
+function mapHttpStatus(code) {
+  switch (code) {
+    case 'VALIDATION_ERROR':
+      return 400;
+    case 'INPUT_NOT_FOUND':
+      return 404;
+    case 'UNSUPPORTED_FORMAT':
+      return 415;
+    case 'COMFYUI_TIMEOUT':
+    case 'COMFYUI_BAD_RESPONSE':
+    case 'LIPSYNC_FAILED':
+      return 424;
+    case 'FFMPEG_FAILED':
+    case 'OUTPUT_WRITE_FAILED':
+      return 500;
+    default:
+      return 500;
+  }
+}
+
+function handleError(res, err) {
+  const status = mapHttpStatus(err.code);
+  res.status(status).json(errorResponse(err));
+}
 
 function createRouter(config, deps = {}) {
   const { processManager, comfyuiClient } = deps;
@@ -37,32 +63,37 @@ function createRouter(config, deps = {}) {
   });
 
   router.post('/jobs', (req, res) => {
-    const job = req.body;
-    const validation = validateJob(job);
-    if (!validation.valid) {
-      return res.status(400).json({ error: 'validation_failed', details: validation });
+    try {
+      const job = req.body;
+      const validation = validateJob(job);
+      if (!validation.valid) {
+        throw new AppError('VALIDATION_ERROR', 'Job validation failed', { errors: validation.errors });
+      }
+      const runId = randomUUID();
+      const paths = buildPaths(job, runId);
+      prepareWorkdir(paths);
+      registerRun(runId, paths.base);
+      fs.writeFileSync(paths.job, JSON.stringify(job, null, 2));
+      manifest.createDraft(paths.manifest, job, runId);
+      const logger = new RunnerLogger(paths.events);
+      logger.log({ level: 'info', stage: 'init', run_id: runId, message: 'job accepted' });
+      jobs.set(runId, { job, paths, status: 'queued' });
+      res.status(202).json({ run_id: runId, status: 'queued', manifest: paths.manifest, workdir: paths.base });
+    } catch (err) {
+      const wrapped = err instanceof AppError ? err : new AppError(err.code || 'UNKNOWN_ERROR', err.message, err.details);
+      handleError(res, wrapped);
     }
-    const runId = randomUUID();
-    const paths = buildPaths(job, runId);
-    prepareWorkdir(paths);
-    registerRun(runId, paths.base);
-    fs.writeFileSync(paths.job, JSON.stringify(job, null, 2));
-    manifest.createDraft(paths.manifest, job, runId);
-    const logger = new RunnerLogger(paths.events);
-    logger.log({ level: 'info', stage: 'init', run_id: runId, message: 'job accepted' });
-    jobs.set(runId, { job, paths, status: 'queued' });
-    res.status(202).json({ run_id: runId, status: 'queued', manifest: paths.manifest, workdir: paths.base });
   });
 
   router.get('/jobs/:id', (req, res) => {
     const run = resolveRun(req.params.id) || jobs.get(req.params.id);
     if (!run) {
-      return res.status(404).json({ error: 'not_found' });
+      return res.status(404).json(errorResponse(new AppError('INPUT_NOT_FOUND', 'run not found')));
     }
     const mPath = (run.paths && run.paths.manifest) || (run.workdir && `${run.workdir}/manifest.json`);
     const data = manifest.readManifest(mPath);
     if (!data) {
-      return res.status(404).json({ error: 'manifest_missing' });
+      return res.status(404).json(errorResponse(new AppError('INPUT_NOT_FOUND', 'manifest missing')));
     }
     res.json({ run_id: req.params.id, status: data.run_status || data.status, exit_status: data.exit_status, phases: data.phases || {}, manifest: mPath });
   });
@@ -70,11 +101,11 @@ function createRouter(config, deps = {}) {
   router.get('/jobs/:id/manifest', (req, res) => {
     const run = resolveRun(req.params.id) || jobs.get(req.params.id);
     if (!run) {
-      return res.status(404).json({ error: 'not_found' });
+      return res.status(404).json(errorResponse(new AppError('INPUT_NOT_FOUND', 'run not found')));
     }
     const mPath = (run.paths && run.paths.manifest) || (run.workdir && `${run.workdir}/manifest.json`);
     if (!mPath || !fs.existsSync(mPath)) {
-      return res.status(404).json({ error: 'manifest_missing' });
+      return res.status(404).json(errorResponse(new AppError('INPUT_NOT_FOUND', 'manifest missing')));
     }
     res.sendFile(mPath);
   });
@@ -82,30 +113,44 @@ function createRouter(config, deps = {}) {
   router.get('/jobs/:id/logs', (req, res) => {
     const run = resolveRun(req.params.id) || jobs.get(req.params.id);
     if (!run) {
-      return res.status(404).json({ error: 'not_found' });
+      return res.status(404).json(errorResponse(new AppError('INPUT_NOT_FOUND', 'run not found')));
     }
     const eventsPath = (run.paths && run.paths.events) || (run.workdir && `${run.workdir}/logs/events.jsonl`);
     if (!eventsPath || !fs.existsSync(eventsPath)) {
-      return res.status(404).json({ error: 'logs_missing' });
+      return res.status(404).json(errorResponse(new AppError('INPUT_NOT_FOUND', 'logs missing')));
     }
     const content = fs.readFileSync(eventsPath, 'utf-8');
     res.type('text/plain').send(content);
   });
 
   router.post('/jobs/:id/start', async (req, res) => {
-    const record = jobs.get(req.params.id) || resolveRun(req.params.id);
-    if (!record) {
-      return res.status(404).json({ error: 'not_found' });
-    }
-    const job = record.job || loadJobFromDisk(record.workdir);
-    if (!job) {
-      return res.status(404).json({ error: 'job_missing' });
-    }
-    res.status(202).json({ run_id: req.params.id, status: 'started' });
     try {
-      await runJob(job, { runId: req.params.id, vidax: { comfyuiClient, processManager } });
+      const record = jobs.get(req.params.id) || resolveRun(req.params.id);
+      if (!record) {
+        throw new AppError('INPUT_NOT_FOUND', 'run not found');
+      }
+      const job = record.job || loadJobFromDisk(record.workdir);
+      if (!job) {
+        throw new AppError('INPUT_NOT_FOUND', 'job_missing');
+      }
+      const resume = req.query.resume === '1' || req.query.resume === 'true';
+      const paths = record.paths || buildPaths(job, req.params.id);
+      const manifestExists = fs.existsSync(paths.manifest);
+      const finalExists = fs.existsSync(paths.final);
+      if (resume && !manifestExists) {
+        throw new AppError('OUTPUT_WRITE_FAILED', 'resume requires existing manifest', { manifest: paths.manifest });
+      }
+      if (resume && finalExists) {
+        throw new AppError('OUTPUT_WRITE_FAILED', 'cannot resume when final output already exists', { final: paths.final });
+      }
+      if (!resume && finalExists) {
+        throw new AppError('OUTPUT_WRITE_FAILED', 'final output already exists; use resume flag', { final: paths.final });
+      }
+      res.status(202).json({ run_id: req.params.id, status: 'started', resume });
+      runJob(job, { runId: req.params.id, resume, vidax: { comfyuiClient, processManager } }).catch(() => {});
     } catch (err) {
-      // errors already captured in manifest
+      const wrapped = err instanceof AppError ? err : new AppError(err.code || 'UNKNOWN_ERROR', err.message, err.details);
+      handleError(res, wrapped);
     }
   });
 
