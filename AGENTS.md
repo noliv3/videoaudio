@@ -6,6 +6,10 @@ Scope: Repository root and all subdirectories.
 - This project is a specification-first effort for a local, scriptable video+audio pipeline. Keep outputs concise and avoid full executable code, workflow JSON dumps, or large class definitions. Favor structured descriptions, interfaces, and pseudocode only.
 - Tests are not required at this stage; do not introduce or run automated tests unless explicitly requested by future instructions.
 - Any documentation updates must be reflected in both this `AGENTS.md` and the repository `README.md`.
+- Output must be Markdown-only; avoid non-Markdown payloads.
+- Do not include code snippets longer than 30 lines in any response.
+- The specification is normative; `README.md` is only an entry point and must stay concise.
+- All open decisions must be captured in `docs/OPEN_DECISIONS.md`.
 
 ## Style & Content
 - Use deterministic terminology: surface required parameters (fps, seed, resolution, target_frames) and emphasize audio-driven timing.
