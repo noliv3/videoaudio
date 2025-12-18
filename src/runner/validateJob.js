@@ -1,0 +1,129 @@
+const fs = require('fs');
+const path = require('path');
+
+const imageExt = ['.png', '.jpg', '.jpeg', '.webp'];
+const videoExt = ['.mp4', '.mov', '.mkv'];
+const audioExt = ['.wav', '.mp3', '.flac', '.m4a'];
+
+function validateJob(job) {
+  const errors = [];
+  if (!job || typeof job !== 'object') {
+    return { valid: false, code: 'VALIDATION_ERROR', errors: [{ field: 'job', message: 'Job payload must be object' }] };
+  }
+
+  validateInput(job.input, errors);
+  validateTiming(job, errors);
+  validateOutput(job.output, errors);
+  validateDeterminism(job.determinism, errors);
+  validateComfy(job.comfyui, errors);
+  validateLipsync(job.lipsync, errors);
+
+  return { valid: errors.length === 0, code: errors.length ? 'VALIDATION_ERROR' : null, errors };
+}
+
+function validateInput(input, errors) {
+  if (!input || typeof input !== 'object') {
+    errors.push({ field: 'input', message: 'input section required', code: 'VALIDATION_ERROR' });
+    return;
+  }
+  const hasImage = !!input.start_image;
+  const hasVideo = !!input.start_video;
+  if (hasImage === hasVideo) {
+    errors.push({ field: 'input.start_image', message: 'exactly one of start_image or start_video required', code: 'VALIDATION_ERROR' });
+  }
+  if (!input.audio) {
+    errors.push({ field: 'input.audio', message: 'audio is required', code: 'VALIDATION_ERROR' });
+  }
+  checkPath(input.start_image, imageExt, 'input.start_image', errors);
+  checkPath(input.start_video, videoExt, 'input.start_video', errors);
+  checkPath(input.audio, audioExt, 'input.audio', errors);
+  if (input.end_image) {
+    checkPath(input.end_image, imageExt, 'input.end_image', errors, false);
+  }
+}
+
+function checkPath(value, allowedExt, field, errors, required = false) {
+  if (!value) {
+    if (required) {
+      errors.push({ field, message: 'missing required path', code: 'VALIDATION_ERROR' });
+    }
+    return;
+  }
+  const ext = path.extname(value).toLowerCase();
+  if (!allowedExt.includes(ext)) {
+    errors.push({ field, message: 'unsupported format', code: 'UNSUPPORTED_FORMAT' });
+  }
+  if (!fs.existsSync(value)) {
+    errors.push({ field, message: 'input not found', code: 'INPUT_NOT_FOUND' });
+  }
+}
+
+function validateTiming(job, errors) {
+  const timing = job.timing;
+  const timingFile = job.timing_file || job?.timing?.timing_file;
+  const hasTimingObj = timing && typeof timing === 'object' && Object.keys(timing).length > 0;
+  if (timingFile && hasTimingObj) {
+    errors.push({ field: 'timing', message: 'timing and timing_file cannot both be set', code: 'VALIDATION_ERROR' });
+  }
+}
+
+function validateOutput(output, errors) {
+  if (!output || typeof output !== 'object') {
+    errors.push({ field: 'output', message: 'output section required', code: 'VALIDATION_ERROR' });
+    return;
+  }
+  if (!output.workdir) {
+    errors.push({ field: 'output.workdir', message: 'workdir is required', code: 'VALIDATION_ERROR' });
+  }
+  if (output.final_name && path.basename(output.final_name) !== output.final_name) {
+    errors.push({ field: 'output.final_name', message: 'final_name must be a basename under workdir', code: 'VALIDATION_ERROR' });
+  }
+  if (output.emit_manifest === false) {
+    errors.push({ field: 'output.emit_manifest', message: 'manifest is mandatory', code: 'VALIDATION_ERROR' });
+  }
+  if (output.emit_logs === false) {
+    errors.push({ field: 'output.emit_logs', message: 'at least one log form must be emitted', code: 'VALIDATION_ERROR' });
+  }
+}
+
+function validateDeterminism(determinism, errors) {
+  if (!determinism || typeof determinism !== 'object') {
+    errors.push({ field: 'determinism', message: 'determinism section required', code: 'VALIDATION_ERROR' });
+    return;
+  }
+  if (determinism.fps == null) {
+    errors.push({ field: 'determinism.fps', message: 'fps required', code: 'VALIDATION_ERROR' });
+  }
+  if (determinism.audio_master === false) {
+    errors.push({ field: 'determinism.audio_master', message: 'audio_master must stay true', code: 'VALIDATION_ERROR' });
+  }
+  if (determinism.frame_rounding && !['ceil', 'round'].includes(determinism.frame_rounding)) {
+    errors.push({ field: 'determinism.frame_rounding', message: 'frame_rounding must be ceil or round', code: 'VALIDATION_ERROR' });
+  }
+}
+
+function validateComfy(comfyui, errors) {
+  if (!comfyui || typeof comfyui !== 'object') {
+    errors.push({ field: 'comfyui', message: 'comfyui section required', code: 'VALIDATION_ERROR' });
+    return;
+  }
+  if (!comfyui.server) {
+    errors.push({ field: 'comfyui.server', message: 'server url required', code: 'VALIDATION_ERROR' });
+  }
+  if (comfyui.seed_policy === 'random' && comfyui.seed != null) {
+    errors.push({ field: 'comfyui.seed', message: 'seed not allowed when seed_policy is random', code: 'VALIDATION_ERROR' });
+  }
+}
+
+function validateLipsync(lipsync, errors) {
+  if (!lipsync) return;
+  if (typeof lipsync !== 'object') {
+    errors.push({ field: 'lipsync', message: 'lipsync must be object', code: 'VALIDATION_ERROR' });
+    return;
+  }
+  if (lipsync.enable === false && lipsync.provider) {
+    errors.push({ field: 'lipsync.provider', message: 'provider ignored when disabled', code: 'VALIDATION_ERROR' });
+  }
+}
+
+module.exports = validateJob;

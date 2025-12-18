@@ -1,0 +1,16 @@
+{
+  "name": "videoaudio-runner",
+  "version": "0.1.0",
+  "description": "VIDAX runner skeleton for video+audio jobs",
+  "main": "src/main.js",
+  "bin": {
+    "va": "bin/va"
+  },
+  "scripts": {
+    "start": "node src/vidax/server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "yargs": "^17.7.2"
+  }
+}

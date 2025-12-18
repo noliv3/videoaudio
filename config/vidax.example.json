@@ -1,0 +1,12 @@
+{
+  "apiKey": "change-me",
+  "port": 3000,
+  "bind": "127.0.0.1",
+  "comfyui": {
+    "command": "python main.py",
+    "cwd": "../ComfyUI",
+    "url": "http://localhost:8188",
+    "startup_timeout_ms": 30000,
+    "health_endpoint": "/health"
+  }
+}
