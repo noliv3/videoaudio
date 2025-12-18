@@ -16,7 +16,7 @@ function delay(ms) {
 
 class ProcessManager {
   constructor(config = {}, comfyuiClient) {
-    this.config = { ...defaults, ...config };
+    this.config = Object.assign({}, defaults, config);
     this.comfyuiClient = comfyuiClient;
     this.state = 'idle';
     this.process = null;
@@ -86,7 +86,7 @@ class ProcessManager {
 
   spawnProcess() {
     if (this.process) return;
-    const env = { ...process.env, ...(this.config.env || {}) };
+    const env = Object.assign({}, process.env, this.config.env || {});
     const args = Array.isArray(this.config.args) ? this.config.args : [];
     const child = spawn(this.config.command, args, {
       cwd: this.config.cwd || process.cwd(),

@@ -10,6 +10,11 @@ const { AppError, errorResponse } = require('../errors');
 
 function mapHttpStatus(code) {
   switch (code) {
+    case 'AUTH_CONFIGURATION':
+    case 'AUTH_MISSING':
+      return 401;
+    case 'AUTH_FORBIDDEN':
+      return 403;
     case 'VALIDATION_ERROR':
       return 400;
     case 'INPUT_NOT_FOUND':
@@ -43,22 +48,28 @@ function createRouter(config, deps = {}) {
   });
 
   router.get('/comfyui/health', async (_req, res) => {
-    if (!comfyuiClient) {
-      return res.status(503).json({ ok: false, error: 'client_missing' });
+    try {
+      if (!comfyuiClient) {
+        throw new AppError('COMFYUI_BAD_RESPONSE', 'comfyui client missing');
+      }
+      const status = await comfyuiClient.health();
+      res.json(status);
+    } catch (err) {
+      const wrapped = err instanceof AppError ? err : new AppError(err.code || 'COMFYUI_BAD_RESPONSE', err.message, err.details);
+      handleError(res, wrapped);
     }
-    const status = await comfyuiClient.health();
-    res.json(status);
   });
 
   router.post('/comfyui/start', async (_req, res) => {
-    if (!processManager) {
-      return res.status(503).json({ ok: false, error: 'manager_missing' });
-    }
     try {
+      if (!processManager) {
+        throw new AppError('COMFYUI_BAD_RESPONSE', 'comfyui process manager missing');
+      }
       const result = await processManager.ensureComfyUI();
       res.status(202).json({ ok: true, status: result.status, url: result.url });
     } catch (err) {
-      res.status(500).json({ ok: false, error: err.code || 'COMFYUI_START_FAILED', message: err.message });
+      const wrapped = err instanceof AppError ? err : new AppError(err.code || 'COMFYUI_BAD_RESPONSE', err.message, err.details);
+      handleError(res, wrapped);
     }
   });
 

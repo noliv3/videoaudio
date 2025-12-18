@@ -60,7 +60,7 @@ function createDraft(manifestPath, job, runId) {
 
 function updateManifest(manifestPath, updater) {
   const current = readManifest(manifestPath) || {};
-  const next = updater({ ...current });
+  const next = updater(Object.assign({}, current));
   writeManifest(manifestPath, next);
   return next;
 }
@@ -96,11 +96,8 @@ function markFinished(manifestPath, exitStatus, extra = {}) {
 function recordPhase(manifestPath, phase, status, extra = {}) {
   return updateManifest(manifestPath, (m) => {
     m.phases = m.phases || {};
-    m.phases[phase] = {
-      status,
-      updated: new Date().toISOString(),
-      ...extra,
-    };
+    const phaseDetails = Object.assign({ status, updated: new Date().toISOString() }, extra || {});
+    m.phases[phase] = phaseDetails;
     return m;
   });
 }
@@ -116,10 +113,9 @@ function recordPrepare(manifestPath, details) {
     m.fps = fps;
     m.target_frames = targetFrames;
     m.input_hashes = details.hashes || m.input_hashes || {};
-    m.seeds = {
-      ...m.seeds,
-      comfyui_seed: details.comfyuiSeed ?? m.seeds?.comfyui_seed ?? null,
-    };
+    const seeds = Object.assign({}, m.seeds || {});
+    seeds.comfyui_seed = details.comfyuiSeed ?? (m.seeds ? m.seeds.comfyui_seed : null) ?? null;
+    m.seeds = seeds;
     return m;
   });
 }
