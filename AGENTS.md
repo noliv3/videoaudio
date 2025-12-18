@@ -1,0 +1,17 @@
+# Agent Guidelines for `videoaudio`
+
+Scope: Repository root and all subdirectories.
+
+## Working Mode
+- This project is a specification-first effort for a local, scriptable video+audio pipeline. Keep outputs concise and avoid full executable code, workflow JSON dumps, or large class definitions. Favor structured descriptions, interfaces, and pseudocode only.
+- Tests are not required at this stage; do not introduce or run automated tests unless explicitly requested by future instructions.
+- Any documentation updates must be reflected in both this `AGENTS.md` and the repository `README.md`.
+
+## Style & Content
+- Use deterministic terminology: surface required parameters (fps, seed, resolution, target_frames) and emphasize audio-driven timing.
+- When describing flows, prefer bullet lists or tables over long prose. Cite defaults and validation rules clearly.
+- Keep scope lean: focus on job specification, orchestration steps, and integration touchpoints (ComfyUI REST, LipSync CLI, ffmpeg mux). Avoid embedding actual workflow graphs.
+
+## Commit & PR
+- Ensure each change is committed on the current branch and accompanied by a PR message via `make_pr` after committing.
+- Summaries should mention specs added or updated.
