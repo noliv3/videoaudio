@@ -21,6 +21,18 @@ Alle Felder sind in YAML/JSON darstellbar. Validierung schlägt als `VALIDATION_
 
 Validierungsfehler: fehlende oder doppelte Startquelle, fehlende Audio-Datei, nicht unterstütztes Format → `VALIDATION_ERROR` bzw. `INPUT_NOT_FOUND`/`UNSUPPORTED_FORMAT`.
 
+### buffer (optional)
+| Feld | Typ | Pflicht | Standard | Regeln |
+| --- | --- | --- | --- | --- |
+| `pre_seconds` | number | Nein | 0 | Vorlauf vor Audiostart; wirkt vor LipSync und beeinflusst nur die visuelle Zielzeit. |
+| `post_seconds` | number | Nein | 0 | Nachlauf nach Audioende; nur erlaubt, wenn `audio_padding=true`. |
+| `audio_padding` | boolean | Nein | false | Ermöglicht, dass `post_seconds` > 0 gesetzt werden darf. |
+
+**Regeln:**
+- `visual_generation_duration = audio_duration + pre_seconds + post_seconds` (siehe [INPUT_ABSTRACTION](./INPUT_ABSTRACTION.md)).
+- Wenn `post_seconds > 0` und `audio_padding` ≠ true → `VALIDATION_ERROR` (Audio bleibt normativer Horizont).
+- Buffer ändert nie die Audiolänge oder Mux-Dauer; LipSync arbeitet immer auf der ungepaddeten Audioquelle.
+
 ### motion
 | Feld | Typ | Pflicht | Standard | Regeln |
 | --- | --- | --- | --- | --- |

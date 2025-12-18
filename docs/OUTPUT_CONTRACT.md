@@ -24,6 +24,7 @@ workdir/
 - `timestamps` (object: `created`, `started`, `finished` in ISO-8601)
 - `input_hashes` (object: start, audio, end; leer, falls optional fehlt)
 - `audio_duration_seconds` (number)
+- `visual_target_duration_seconds` (number; entspricht `audio_duration_seconds + pre_buffer + post_buffer`)
 - `fps` (number)
 - `target_frames` (integer, nach Rounding-Regel)
 - `effective_params` (object: final angewandte Job-Parameter inkl. Defaults)
@@ -31,6 +32,7 @@ workdir/
 - `seeds` (object: comfyui_seed, lipsync_seed falls relevant)
 - `run_status` (string enum: `queued`, `running`, `completed`, `failed`)
 - `exit_status` (string enum: `success`, `failed`, `partial`, `null`)
+- `buffer_applied` (object: `pre_seconds`, `post_seconds`, `audio_padding` Flag)
 
 ## Cleanup-, Resume- und Overwrite-Regeln
 - `workdir` muss erzeugt oder geleert werden können; fehlende Schreibrechte → `OUTPUT_WRITE_FAILED`.
