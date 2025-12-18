@@ -8,10 +8,7 @@ class RunnerLogger {
   }
 
   log(event) {
-    const payload = {
-      timestamp: new Date().toISOString(),
-      ...event
-    };
+    const payload = Object.assign({ timestamp: new Date().toISOString() }, event || {});
     fs.appendFileSync(this.eventsPath, JSON.stringify(payload) + '\n');
     return payload;
   }

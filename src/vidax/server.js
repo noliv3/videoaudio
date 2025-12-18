@@ -23,19 +23,20 @@ function loadConfig() {
 function requireApiKey(config) {
   const apiKey = process.env.VIDAX_API_KEY || config.apiKey;
   if (!apiKey) {
-    throw new AppError('VALIDATION_ERROR', 'VIDAX API key is required');
+    throw new AppError('AUTH_CONFIGURATION', 'VIDAX API key is required');
   }
   return apiKey;
 }
 
 function startServer() {
   const config = loadConfig();
-  requireApiKey(config);
+  const apiKey = requireApiKey(config);
+  config.apiKey = apiKey;
   const comfyuiClient = new ComfyUIClient(config.comfyui || {});
   const processManager = new ProcessManager(config.comfyui || {}, comfyuiClient);
   const app = express();
   app.use(express.json());
-  app.use(createAuthMiddleware(config));
+  app.use(createAuthMiddleware(config, apiKey));
   app.use('/', createRouter(config, { processManager, comfyuiClient }));
   const port = config.port || 3000;
   const host = config.bind || '127.0.0.1';
