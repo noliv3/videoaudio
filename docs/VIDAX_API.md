@@ -21,11 +21,12 @@
 - Fehler: `400` bei fehlgeschlagener Installation/Verification (`UNSUPPORTED_FORMAT`), `404` bei fehlender Manifest-Datei.
 
 ### GET /comfyui/health
-- Antwort `200 OK` mit `{ok:boolean, ...}` aus ComfyUI Health-Check.
-- `ok=false` wenn ComfyUI nicht erreichbar.
+- Antwort `200 OK` mit `{ok:boolean, ...}` aus ComfyUI Health-Check (`/system_stats` als Default-Endpunkt, Fallback `/health`).
+- `ok=true`, sobald `/system_stats` einen `200`-Status liefert; `ok=false` wenn ComfyUI nicht erreichbar.
 
 ### POST /comfyui/start
 - Startet ComfyUI falls Health nicht `ok` und `auto_start=true`.
+- Default-Startbefehl: `python` mit Args `["main.py","--listen","127.0.0.1","--port","8188"]`, CWD aus `comfyui.cwd` (Default Repo-Wurzel). Unter Windows wird bei `command="python"` automatisch `<cwd>/venv/Scripts/python.exe` bevorzugt.
 - Antwort `202 Accepted` mit `{ok:true,status:"ready",url:"..."}`.
 - Fehler: `500` mit Fehlercode `COMFYUI_TIMEOUT|COMFYUI_START_FAILED`.
 

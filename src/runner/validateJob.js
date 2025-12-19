@@ -119,6 +119,7 @@ function validateComfy(comfyui, errors) {
     errors.push({ field: 'comfyui.seed', message: 'seed not allowed when seed_policy is random', code: 'VALIDATION_ERROR' });
   }
   validateSeedValue(comfyui.seed, errors);
+  validateComfyParams(comfyui.params, errors);
 }
 
 function validateLipsync(lipsync, errors) {
@@ -174,6 +175,42 @@ function validateSeedValue(seed, errors) {
       message: `seed must be between ${MIN_SEED} and ${MAX_SEED}`,
       code: 'VALIDATION_ERROR',
     });
+  }
+}
+
+function validateComfyParams(params, errors) {
+  if (!params) return;
+  if (typeof params !== 'object') {
+    errors.push({ field: 'comfyui.params', message: 'params must be object', code: 'VALIDATION_ERROR' });
+    return;
+  }
+  if (params.prompt != null && typeof params.prompt !== 'string') {
+    errors.push({ field: 'comfyui.params.prompt', message: 'prompt must be string', code: 'VALIDATION_ERROR' });
+  }
+  if (params.negative != null && typeof params.negative !== 'string') {
+    errors.push({ field: 'comfyui.params.negative', message: 'negative must be string', code: 'VALIDATION_ERROR' });
+  }
+  if (params.negative_prompt != null && typeof params.negative_prompt !== 'string') {
+    errors.push({ field: 'comfyui.params.negative_prompt', message: 'negative_prompt must be string', code: 'VALIDATION_ERROR' });
+  }
+  validatePositiveInt(params.width, 'comfyui.params.width', errors);
+  validatePositiveInt(params.height, 'comfyui.params.height', errors);
+  validatePositiveInt(params.steps, 'comfyui.params.steps', errors);
+  if (params.cfg != null && (typeof params.cfg !== 'number' || !Number.isFinite(params.cfg))) {
+    errors.push({ field: 'comfyui.params.cfg', message: 'cfg must be a finite number', code: 'VALIDATION_ERROR' });
+  }
+  if (params.sampler != null && typeof params.sampler !== 'string') {
+    errors.push({ field: 'comfyui.params.sampler', message: 'sampler must be string', code: 'VALIDATION_ERROR' });
+  }
+  if (params.scheduler != null && typeof params.scheduler !== 'string') {
+    errors.push({ field: 'comfyui.params.scheduler', message: 'scheduler must be string', code: 'VALIDATION_ERROR' });
+  }
+}
+
+function validatePositiveInt(value, field, errors) {
+  if (value == null) return;
+  if (!Number.isInteger(value) || value <= 0) {
+    errors.push({ field, message: 'must be a positive integer', code: 'VALIDATION_ERROR' });
   }
 }
 

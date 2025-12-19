@@ -25,6 +25,7 @@
 ## Workflow-Referenz
 - Runner speichert nur `workflow_id` (string) und optional eine Liste `workflow_ids` als Fallback; keine Graphen im Job-Dokument.
 - Bei mehreren IDs wird in Reihenfolge versucht; jeder Versuch respektiert die Retry-Parameter.
+- Fehlt `workflow_ids`, verwendet der Runner automatisch `vidax_text2img_frames` (bundled Core-Only Workflow). Parameter-Mapping: Prompt aus `comfyui.params.prompt` oder `motion.prompt`, Negative aus `comfyui.params.negative(_prompt)`, Auflösung `width/height` (Default 768), `steps` (Default 20), `cfg` (Default `motion.guidance` oder 7.5), `sampler` (Default `dpmpp_2m`), `scheduler` (Default `karras`), Seed aus der Policy. Output: PNG-Frames via `SaveImage` → `workdir/frames/`.
 
 ## Timeout-Regeln
 - `timeout_connect`: Abbruch, wenn keine Verbindung hergestellt werden kann.

@@ -142,15 +142,26 @@ function applyEffectiveSeed(job, comfyuiSeed, policy) {
   return Object.assign({}, job, { comfyui });
 }
 
+function applyWorkflowDefaults(job) {
+  const comfyui = Object.assign({}, job.comfyui || {});
+  const workflowIds = Array.isArray(comfyui.workflow_ids) ? comfyui.workflow_ids.filter(Boolean) : [];
+  if (workflowIds.length === 0) {
+    workflowIds.push('vidax_text2img_frames');
+  }
+  comfyui.workflow_ids = workflowIds;
+  return Object.assign({}, job, { comfyui });
+}
+
 async function runJob(job, options = {}) {
   const validation = validateJob(job);
   if (!validation.valid) {
     throw new AppError('VALIDATION_ERROR', 'Job validation failed', { errors: validation.errors });
   }
 
+  const normalizedJob = applyWorkflowDefaults(job);
   const resume = !!options.resume;
   const initialRunId = options.runId || randomUUID();
-  const paths = buildPaths(job, initialRunId);
+  const paths = buildPaths(normalizedJob, initialRunId);
   ensureOutputRules(paths, resume);
 
   const existingManifest = resume ? manifest.readManifest(paths.manifest) : null;
@@ -161,9 +172,9 @@ async function runJob(job, options = {}) {
   prepareWorkdir(paths);
   registerRun(runId, paths.base);
 
-  fs.writeFileSync(paths.job, JSON.stringify(job, null, 2));
+  fs.writeFileSync(paths.job, JSON.stringify(normalizedJob, null, 2));
   if (!resume || !existingManifest) {
-    manifest.createDraft(paths.manifest, job, runId);
+    manifest.createDraft(paths.manifest, normalizedJob, runId);
   }
   const logger = new RunnerLogger(paths.events);
   logger.log({ level: 'info', stage: 'init', run_id: runId, message: resume ? 'job resume requested' : 'job queued' });
@@ -174,18 +185,18 @@ async function runJob(job, options = {}) {
     manifest.markStarted(paths.manifest);
     manifest.recordPhase(paths.manifest, 'prepare', 'running');
     logger.log({ level: 'info', stage: 'prepare', message: 'preparing inputs' });
-    const comfyuiSeedInfo = resolveComfyuiSeed(job, existingManifest);
-    const effectiveJob = applyEffectiveSeed(job, comfyuiSeedInfo.seed, comfyuiSeedInfo.policy);
+    const comfyuiSeedInfo = resolveComfyuiSeed(normalizedJob, existingManifest);
+    const effectiveJob = applyEffectiveSeed(normalizedJob, comfyuiSeedInfo.seed, comfyuiSeedInfo.policy);
     const inputHashes = await computeInputHashes(effectiveJob);
-    const audioDurationSeconds = getAudioDurationSeconds(job.input?.audio);
-    const preBufferSeconds = job?.buffer?.pre_seconds ?? 0;
-    const postBufferSeconds = job?.buffer?.post_seconds ?? 0;
+    const audioDurationSeconds = getAudioDurationSeconds(normalizedJob.input?.audio);
+    const preBufferSeconds = normalizedJob?.buffer?.pre_seconds ?? 0;
+    const postBufferSeconds = normalizedJob?.buffer?.post_seconds ?? 0;
     const visualTargetDurationSeconds = audioDurationSeconds + preBufferSeconds;
     const prepareDetails = {
       audioDurationSeconds,
       visualTargetDurationSeconds,
-      fps: job.determinism?.fps ?? null,
-      frameRounding: job.determinism?.frame_rounding || 'ceil',
+      fps: normalizedJob.determinism?.fps ?? null,
+      frameRounding: normalizedJob.determinism?.frame_rounding || 'ceil',
       comfyuiSeed: comfyuiSeedInfo.seed,
       comfyuiSeedPolicy: comfyuiSeedInfo.policy,
       bufferApplied: { pre_seconds: preBufferSeconds, post_seconds: postBufferSeconds },
@@ -197,7 +208,7 @@ async function runJob(job, options = {}) {
     manifest.recordVersions(paths.manifest, { ffmpeg: getFfmpegVersion() });
 
     manifest.recordPhase(paths.manifest, 'comfyui', 'queued');
-    const workflowId = job?.comfyui?.workflow_ids?.[0] || null;
+    const workflowId = effectiveJob?.comfyui?.workflow_ids?.[0] || null;
     if (!workflowId) {
       logger.log({ level: 'info', stage: 'comfyui', message: 'workflow_id missing, skipping' });
       manifest.recordPhase(paths.manifest, 'comfyui', 'skipped', { note: 'workflow_id missing' });
@@ -206,7 +217,7 @@ async function runJob(job, options = {}) {
       manifest.recordPhase(paths.manifest, 'comfyui', 'running', { workflow_id: workflowId });
       try {
         if (processManager) {
-          await processManager.ensureComfyUI();
+          await processManager.ensureComfyUI({ requireWorkflows: true });
         }
       } catch (err) {
         manifest.recordPhase(paths.manifest, 'comfyui', 'failed', { workflow_id: workflowId, error: err.message, code: err.code });
@@ -218,12 +229,20 @@ async function runJob(job, options = {}) {
         throw err;
       }
       const currentManifest = manifest.readManifest(paths.manifest) || {};
+      const comfyParams = effectiveJob?.comfyui?.params || {};
       const payload = {
         workflow_id: workflowId,
-        seed: currentManifest.seeds?.comfyui_seed ?? job?.comfyui?.seed ?? null,
+        seed: currentManifest.seeds?.comfyui_seed ?? effectiveJob?.comfyui?.seed ?? null,
         fps: currentManifest.fps ?? prepareDetails.fps ?? null,
         target_frames: currentManifest.target_frames ?? null,
-        prompt: job?.motion?.prompt ?? null,
+        prompt: comfyParams.prompt ?? effectiveJob?.motion?.prompt ?? null,
+        negative: comfyParams.negative ?? comfyParams.negative_prompt ?? null,
+        width: comfyParams.width ?? 768,
+        height: comfyParams.height ?? 768,
+        steps: comfyParams.steps ?? 20,
+        cfg: comfyParams.cfg ?? effectiveJob?.motion?.guidance ?? 7.5,
+        sampler: comfyParams.sampler ?? 'dpmpp_2m',
+        scheduler: comfyParams.scheduler ?? 'karras',
       };
       try {
         const submitResponse = await comfyuiClient.submitPrompt(payload);
@@ -242,8 +261,8 @@ async function runJob(job, options = {}) {
           prompt_id: promptId,
         });
         const waitResult = await comfyuiClient.waitForCompletion(promptId, {
-          timeout_total: job?.comfyui?.timeout_total ?? comfyuiClient.timeout,
-          poll_interval_ms: job?.comfyui?.poll_interval_ms || 500,
+          timeout_total: effectiveJob?.comfyui?.timeout_total ?? comfyuiClient.timeout,
+          poll_interval_ms: effectiveJob?.comfyui?.poll_interval_ms || 500,
         });
         const collectResult = await comfyuiClient.collectOutputs(
           promptId,
@@ -267,10 +286,10 @@ async function runJob(job, options = {}) {
     }
 
     manifest.recordPhase(paths.manifest, 'stabilize', 'skipped');
-    const lipsyncEnabled = job?.lipsync?.enable !== false;
-    const lipsyncProvider = job?.lipsync?.provider || null;
-    const allowPassthrough = job?.lipsync?.params?.allow_passthrough === true;
-    const videoSource = selectVideoSource(job, paths, audioDurationSeconds, prepareDetails.fps, logger);
+    const lipsyncEnabled = normalizedJob?.lipsync?.enable !== false;
+    const lipsyncProvider = normalizedJob?.lipsync?.provider || null;
+    const allowPassthrough = normalizedJob?.lipsync?.params?.allow_passthrough === true;
+    const videoSource = selectVideoSource(normalizedJob, paths, audioDurationSeconds, prepareDetails.fps, logger);
     let encodeVideoSource = videoSource;
 
     if (!lipsyncEnabled) {
@@ -282,7 +301,7 @@ async function runJob(job, options = {}) {
       manifest.recordPhase(paths.manifest, 'lipsync', 'queued', { provider: lipsyncProvider, out_path: paths.lipsyncOutputVideo });
       let preLipVideoPath = null;
       try {
-        preLipVideoPath = prepareLipsyncInput(videoSource, job, paths, audioDurationSeconds, prepareDetails.fps, logger);
+        preLipVideoPath = prepareLipsyncInput(videoSource, normalizedJob, paths, audioDurationSeconds, prepareDetails.fps, logger);
       } catch (err) {
         manifest.recordPhase(paths.manifest, 'lipsync', 'failed', {
           provider: lipsyncProvider,
@@ -306,47 +325,47 @@ async function runJob(job, options = {}) {
       if (!preLipVideoPath) {
         encodeVideoSource = videoSource;
       } else {
-      manifest.recordPhase(paths.manifest, 'lipsync', 'running', {
-        provider: lipsyncProvider,
-        input_video: preLipVideoPath,
-        out_path: paths.lipsyncOutputVideo,
-      });
-      try {
-        await runLipSync({
+        manifest.recordPhase(paths.manifest, 'lipsync', 'running', {
           provider: lipsyncProvider,
-          params: job?.lipsync?.params || {},
-          audioPath: job.input.audio,
-          videoPath: preLipVideoPath,
-          outPath: paths.lipsyncOutputVideo,
-          cwd: paths.base,
-          logger,
-          configPath: path.resolve(process.cwd(), 'config/lipsync.providers.json'),
-        });
-        manifest.recordPhase(paths.manifest, 'lipsync', 'completed', {
-          provider: lipsyncProvider,
+          input_video: preLipVideoPath,
           out_path: paths.lipsyncOutputVideo,
         });
-        encodeVideoSource = { kind: 'lipsync_video', path: paths.lipsyncOutputVideo, isImageSequence: false };
-      } catch (err) {
-        manifest.recordPhase(paths.manifest, 'lipsync', 'failed', {
-          provider: lipsyncProvider,
-          error: err.message,
-          code: err.code,
-          out_path: paths.lipsyncOutputVideo,
-          allow_passthrough: allowPassthrough,
-        });
-        if (allowPassthrough) {
-          partialReason = 'lipsync_failed_passthrough';
-          logger.log({
-            level: 'warn',
-            stage: 'lipsync',
-            message: 'lipsync failed but allow_passthrough=true; continuing with original video source',
-            code: err.code,
+        try {
+          await runLipSync({
+            provider: lipsyncProvider,
+            params: normalizedJob?.lipsync?.params || {},
+            audioPath: normalizedJob.input.audio,
+            videoPath: preLipVideoPath,
+            outPath: paths.lipsyncOutputVideo,
+            cwd: paths.base,
+            logger,
+            configPath: path.resolve(process.cwd(), 'config/lipsync.providers.json'),
           });
-        } else {
-          throw err;
+          manifest.recordPhase(paths.manifest, 'lipsync', 'completed', {
+            provider: lipsyncProvider,
+            out_path: paths.lipsyncOutputVideo,
+          });
+          encodeVideoSource = { kind: 'lipsync_video', path: paths.lipsyncOutputVideo, isImageSequence: false };
+        } catch (err) {
+          manifest.recordPhase(paths.manifest, 'lipsync', 'failed', {
+            provider: lipsyncProvider,
+            error: err.message,
+            code: err.code,
+            out_path: paths.lipsyncOutputVideo,
+            allow_passthrough: allowPassthrough,
+          });
+          if (allowPassthrough) {
+            partialReason = 'lipsync_failed_passthrough';
+            logger.log({
+              level: 'warn',
+              stage: 'lipsync',
+              message: 'lipsync failed but allow_passthrough=true; continuing with original video source',
+              code: err.code,
+            });
+          } else {
+            throw err;
+          }
         }
-      }
       }
     }
 
@@ -357,7 +376,7 @@ async function runJob(job, options = {}) {
     encodeStarted = true;
     muxAudioVideo({
       videoInput: encodeVideoSource.path,
-      audioInput: job.input.audio,
+      audioInput: normalizedJob.input.audio,
       fps: prepareDetails.fps,
       outPath: paths.final,
       maxDurationSeconds: audioDurationSeconds,

@@ -1,21 +1,23 @@
 # ComfyUI Assets Manifest & Handling
 
-- **Manifest Location**: Resolution order `VIDAX_ASSETS_CONFIG` → `VA_STATE_DIR/state/config/assets.json` → `config/assets.json` (CWD). Paths can be absolute or relative; `~/` is expanded.
+- **Manifest Location**: Resolution order `VIDAX_ASSETS_CONFIG` → `VA_STATE_DIR/state/config/assets.json` → `config/assets.json` (CWD). Paths can be absolute or relative; `~/` is expanded; relative und `file://`-Pfade werden relativ zum Manifest-Ordner aufgelöst.
 - **StateDir Target**: Assets install into `VA_STATE_DIR/state` (default `~/.va/state`):
   - Workflows → `comfyui/workflows/`
   - Models → `comfyui/models/`
+  - Gebündelte Quell-Assets (lokale Workflows) → `assets/workflows/`
 - **Schema**:
   - `workflows[]` / `models[]` entries: `{id, url, sha256, dest, unpack?}`
   - `dest` resolves relative to StateDir when not absolute (`comfyui/workflows/<file>` or `comfyui/models/<subdir>/<file>` recommended).
   - `unpack=true` expects a zip archive; contents extract into `dest` with a marker `.asset-meta.json`.
   - `policy`: `{on_missing, on_hash_mismatch, allow_insecure_http}` defaults → `download`, `fail`, `false`.
+  - Reale SHA-256-Werte sind Pflicht, Platzhalter werden nicht akzeptiert.
 - **Verification Rules**:
   - SHA-256 is enforced on downloads; mismatches raise `UNSUPPORTED_FORMAT`.
   - Existing files with mismatched hashes honor `on_hash_mismatch` (default fail).
   - Missing assets honor `on_missing` (default download; otherwise `INPUT_NOT_FOUND`).
   - `allow_insecure_http=false` blocks `http://` sources.
 - **Install/Check**:
-  - `va install` and `POST /install` perform downloads + verification; failures bubble as `UNSUPPORTED_FORMAT` for hash mismatches/download issues or `OUTPUT_WRITE_FAILED` for write/unzip errors.
+  - `va install` and `POST /install` perform downloads + verification; failures bubble as `UNSUPPORTED_FORMAT` for hash mismatches/download issues or `OUTPUT_WRITE_FAILED` for write/unzip errors. Gebündelte Workflows aus dem Repo werden zuerst nach `state/assets/workflows/` kopiert, sodass relative/file-Quellen offline installiert werden können.
   - `GET /install/status` reports `ok`/`missing`/`hash_mismatch`/`unknown` without downloading.
   - Job start triggers an asset check; missing/invalid assets surface `INPUT_NOT_FOUND` (missing) or `UNSUPPORTED_FORMAT` (hash mismatch/blocked download) before ComfyUI starts.
 - **Tooling Requirements**: `unzip` must exist on PATH for `unpack=true`. If absent, the asset stays uninstalled and the install step fails with `OUTPUT_WRITE_FAILED`.

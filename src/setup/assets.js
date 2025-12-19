@@ -7,6 +7,7 @@ const https = require('https');
 const { pipeline } = require('stream');
 const { promisify } = require('util');
 const { spawn } = require('child_process');
+const { fileURLToPath } = require('url');
 const { AppError } = require('../errors');
 const { stateRoot } = require('../runner/paths');
 
@@ -50,24 +51,51 @@ function readManifest(manifestPath) {
   }
 }
 
+function resolveSource(url, baseDir) {
+  if (!url) {
+    throw new AppError('VALIDATION_ERROR', 'asset url missing');
+  }
+  if (url.startsWith('file://')) {
+    return { type: 'file', path: fileURLToPath(url) };
+  }
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return { type: 'remote', url };
+  }
+  const resolved = path.isAbsolute(url) ? url : path.resolve(baseDir || process.cwd(), url);
+  return { type: 'file', path: resolved };
+}
+
 async function downloadTo(url, dest, options = {}) {
-  const { allowInsecure = false } = options;
-  if (!allowInsecure && url.startsWith('http://')) {
-    throw new AppError('UNSUPPORTED_FORMAT', 'insecure download blocked', { url });
+  const { allowInsecure = false, baseDir = null } = options;
+  const source = resolveSource(url, baseDir);
+  if (source.type === 'file') {
+    if (!fs.existsSync(source.path) || !fs.statSync(source.path).isFile()) {
+      throw new AppError('INPUT_NOT_FOUND', 'asset source missing', { url, resolved: source.path });
+    }
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.copyFileSync(source.path, dest);
+    return dest;
+  }
+  if (!allowInsecure && source.url.startsWith('http://')) {
+    throw new AppError('UNSUPPORTED_FORMAT', 'insecure download blocked', { url: source.url });
   }
   fs.mkdirSync(path.dirname(dest), { recursive: true });
-  const client = url.startsWith('https://') ? https : http;
+  const client = source.url.startsWith('https://') ? https : http;
   return new Promise((resolve, reject) => {
-    const request = client.get(url, (response) => {
+    const request = client.get(source.url, (response) => {
       if (response.statusCode !== 200) {
-        reject(new AppError('INPUT_NOT_FOUND', 'asset download failed', { url, status: response.statusCode }));
+        reject(new AppError('INPUT_NOT_FOUND', 'asset download failed', { url: source.url, status: response.statusCode }));
         return;
       }
       streamPipeline(response, fs.createWriteStream(dest))
         .then(() => resolve(dest))
-        .catch((err) => reject(new AppError('OUTPUT_WRITE_FAILED', 'asset write failed', { url, dest, error: err.message })));
+        .catch((err) =>
+          reject(new AppError('OUTPUT_WRITE_FAILED', 'asset write failed', { url: source.url, dest, error: err.message }))
+        );
     });
-    request.on('error', (err) => reject(new AppError('INPUT_NOT_FOUND', 'asset download failed', { url, error: err.message })));
+    request.on('error', (err) =>
+      reject(new AppError('INPUT_NOT_FOUND', 'asset download failed', { url: source.url, error: err.message }))
+    );
   });
 }
 
@@ -145,7 +173,8 @@ async function verifyExisting(asset, paths) {
   return { status: 'hash_mismatch', hash };
 }
 
-async function installAsset(asset, policy, stateDir) {
+async function installAsset(asset, policy, stateDir, options = {}) {
+  const { baseDir = null } = options;
   const paths = resolvePaths(asset, stateDir);
   fs.mkdirSync(paths.baseDir, { recursive: true });
   const existing = await verifyExisting(asset, paths);
@@ -160,7 +189,7 @@ async function installAsset(asset, policy, stateDir) {
   }
 
   const downloadTarget = asset.unpack ? path.join(paths.baseDir, `${asset.id || path.basename(paths.destPath)}.zip`) : paths.destPath;
-  await downloadTo(asset.url, downloadTarget, { allowInsecure: policy.allow_insecure_http });
+  await downloadTo(asset.url, downloadTarget, { allowInsecure: policy.allow_insecure_http, baseDir });
   const downloadedHash = await sha256File(downloadTarget);
   if (asset.sha256 && downloadedHash !== asset.sha256) {
     throw new AppError('UNSUPPORTED_FORMAT', 'asset hash mismatch after download', { asset: asset.id, expected: asset.sha256, actual: downloadedHash });
@@ -187,6 +216,7 @@ async function ensureAllAssets(manifestPath, stateDir, options = {}) {
   const { install = true, strict = true } = options;
   const manifest = readManifest(manifestPath);
   const policy = Object.assign({}, defaultPolicy, manifest.policy || {});
+  const manifestDir = path.dirname(manifestPath);
   const summary = {
     manifest: manifestPath,
     state_dir: stateDir,
@@ -201,7 +231,7 @@ async function ensureAllAssets(manifestPath, stateDir, options = {}) {
     for (const asset of entries) {
       try {
         const result = install
-          ? await installAsset(asset, policy, stateDir)
+          ? await installAsset(asset, policy, stateDir, { baseDir: manifestDir })
           : await summarizeAsset(asset, policy, stateDir);
         summary[category].push(result);
         if (result.status !== 'ok' && result.status !== 'installed') {
