@@ -20,5 +20,6 @@ Spezifikation-first Repository für einen lokalen, skriptbaren Video+Audio-Runne
 - Encode-Phase erzeugt ein reales `final.mp4` mit ffmpeg: Audio ist Master, Video wird auf `determinism.fps` als CFR getrimmt und endet spätestens mit Audiolänge (Drift <= 1 Frame). Dummy-Video aus Startbild/-frame, falls ComfyUI keine Frames liefert.
 - VIDAX verlangt einen gesetzten API-Key und liefert strukturierte Fehlermeldungen mit Codes/Retry-Hinweisen gemäß [`docs/ERROR_MODEL.md`](docs/ERROR_MODEL.md).
 - ComfyUI-Phase: Bei gesetztem `workflow_id` wird ein Prompt submitted, der Runner pollt auf Fertigstellung (`timeout_total`, `poll_interval_ms=500`) und übernimmt Outputs nach `workdir/comfyui/output.mp4` oder `workdir/frames/`; fehlende Outputs führen zu `COMFYUI_BAD_RESPONSE`.
+- LipSync-Phase: Sobald `lipsync.enable=true` und ein Provider aus `config/lipsync.providers.json` aufgelöst werden kann, wird die Provider-CLI mit `{audio}/{video}/{out}`-Template ausgeführt; Output landet unter `workdir/lipsync/output.mp4`. `allow_passthrough=true` erlaubt Encode trotz Providerfehler (Manifest hält den Fehler fest).
 
 Alle Spezifikationen sind normativ; diese README dient nur als Einstieg und Link-Sammlung.

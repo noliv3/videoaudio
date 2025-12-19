@@ -7,6 +7,7 @@ const RunnerLogger = require('./logger');
 const manifest = require('./manifest');
 const { getAudioDurationSeconds } = require('./audio');
 const { getFfmpegVersion, muxAudioVideo, createStillVideo, extractFirstFrame } = require('./ffmpeg');
+const { runLipSync } = require('./lipsync');
 const { AppError } = require('../errors');
 
 function ensureOutputRules(paths, resume) {
@@ -65,6 +66,31 @@ function selectVideoSource(job, paths, audioDurationSeconds, fps, logger) {
   return { kind: 'dummy', path: dummyOut, isImageSequence: false };
 }
 
+function prepareLipsyncInput(videoSource, job, paths, audioDurationSeconds, fps, logger) {
+  if (fs.existsSync(paths.comfyuiOutputVideo)) {
+    return paths.comfyuiOutputVideo;
+  }
+  ensureTempDir(paths.tempDir);
+  const target = paths.preLipsyncVideo;
+  if (videoSource.isImageSequence) {
+    muxAudioVideo({
+      videoInput: videoSource.path,
+      audioInput: job.input.audio,
+      fps,
+      outPath: target,
+      maxDurationSeconds: audioDurationSeconds,
+      isImageSequence: true,
+    });
+    logger.log({ level: 'info', stage: 'lipsync', message: 'rendered pre-lipsync video from frames' });
+    return target;
+  }
+  if (videoSource.path !== target) {
+    fs.copyFileSync(videoSource.path, target);
+  }
+  logger.log({ level: 'info', stage: 'lipsync', message: 'prepared pre-lipsync video source' });
+  return target;
+}
+
 async function runJob(job, options = {}) {
   const validation = validateJob(job);
   if (!validation.valid) {
@@ -92,6 +118,8 @@ async function runJob(job, options = {}) {
   logger.log({ level: 'info', stage: 'init', run_id: runId, message: resume ? 'job resume requested' : 'job queued' });
 
   try {
+    let partialReason = null;
+    let encodeStarted = false;
     manifest.markStarted(paths.manifest);
     manifest.recordPhase(paths.manifest, 'prepare', 'running');
     logger.log({ level: 'info', stage: 'prepare', message: 'preparing inputs' });
@@ -182,32 +210,116 @@ async function runJob(job, options = {}) {
     }
 
     manifest.recordPhase(paths.manifest, 'stabilize', 'skipped');
-    manifest.recordPhase(paths.manifest, 'lipsync', 'skipped');
+    const lipsyncEnabled = job?.lipsync?.enable !== false;
+    const lipsyncProvider = job?.lipsync?.provider || null;
+    const allowPassthrough = job?.lipsync?.params?.allow_passthrough === true;
+    const videoSource = selectVideoSource(job, paths, audioDurationSeconds, prepareDetails.fps, logger);
+    let encodeVideoSource = videoSource;
+
+    if (!lipsyncEnabled) {
+      manifest.recordPhase(paths.manifest, 'lipsync', 'skipped', { note: 'disabled' });
+    } else if (!lipsyncProvider) {
+      manifest.recordPhase(paths.manifest, 'lipsync', 'skipped', { note: 'provider missing' });
+    } else {
+      manifest.recordVersions(paths.manifest, { lipsync_provider: lipsyncProvider });
+      manifest.recordPhase(paths.manifest, 'lipsync', 'queued', { provider: lipsyncProvider, out_path: paths.lipsyncOutputVideo });
+      let preLipVideoPath = null;
+      try {
+        preLipVideoPath = prepareLipsyncInput(videoSource, job, paths, audioDurationSeconds, prepareDetails.fps, logger);
+      } catch (err) {
+        manifest.recordPhase(paths.manifest, 'lipsync', 'failed', {
+          provider: lipsyncProvider,
+          error: err.message,
+          code: err.code,
+          out_path: paths.lipsyncOutputVideo,
+          allow_passthrough: allowPassthrough,
+        });
+        if (allowPassthrough) {
+          partialReason = 'lipsync_failed_passthrough';
+          logger.log({
+            level: 'warn',
+            stage: 'lipsync',
+            message: 'failed to prepare lipsync input; allow_passthrough=true so continuing',
+            code: err.code,
+          });
+        } else {
+          throw err;
+        }
+      }
+      if (!preLipVideoPath) {
+        encodeVideoSource = videoSource;
+      } else {
+      manifest.recordPhase(paths.manifest, 'lipsync', 'running', {
+        provider: lipsyncProvider,
+        input_video: preLipVideoPath,
+        out_path: paths.lipsyncOutputVideo,
+      });
+      try {
+        await runLipSync({
+          provider: lipsyncProvider,
+          params: job?.lipsync?.params || {},
+          audioPath: job.input.audio,
+          videoPath: preLipVideoPath,
+          outPath: paths.lipsyncOutputVideo,
+          cwd: paths.base,
+          logger,
+          configPath: path.resolve(process.cwd(), 'config/lipsync.providers.json'),
+        });
+        manifest.recordPhase(paths.manifest, 'lipsync', 'completed', {
+          provider: lipsyncProvider,
+          out_path: paths.lipsyncOutputVideo,
+        });
+        encodeVideoSource = { kind: 'lipsync_video', path: paths.lipsyncOutputVideo, isImageSequence: false };
+      } catch (err) {
+        manifest.recordPhase(paths.manifest, 'lipsync', 'failed', {
+          provider: lipsyncProvider,
+          error: err.message,
+          code: err.code,
+          out_path: paths.lipsyncOutputVideo,
+          allow_passthrough: allowPassthrough,
+        });
+        if (allowPassthrough) {
+          partialReason = 'lipsync_failed_passthrough';
+          logger.log({
+            level: 'warn',
+            stage: 'lipsync',
+            message: 'lipsync failed but allow_passthrough=true; continuing with original video source',
+            code: err.code,
+          });
+        } else {
+          throw err;
+        }
+      }
+      }
+    }
+
     manifest.recordPhase(paths.manifest, 'encode', 'queued');
     logger.log({ level: 'info', stage: 'encode', message: 'starting ffmpeg mux' });
 
     manifest.recordPhase(paths.manifest, 'encode', 'running', { fps: prepareDetails.fps });
-    const videoSource = selectVideoSource(job, paths, audioDurationSeconds, prepareDetails.fps, logger);
+    encodeStarted = true;
     muxAudioVideo({
-      videoInput: videoSource.path,
+      videoInput: encodeVideoSource.path,
       audioInput: job.input.audio,
       fps: prepareDetails.fps,
       outPath: paths.final,
       maxDurationSeconds: audioDurationSeconds,
-      isImageSequence: videoSource.isImageSequence,
+      isImageSequence: encodeVideoSource.isImageSequence,
     });
     manifest.recordPhase(paths.manifest, 'encode', 'completed', {
       fps: prepareDetails.fps,
-      video_source: videoSource.kind,
+      video_source: encodeVideoSource.kind,
       duration_cap_seconds: audioDurationSeconds,
     });
 
-    manifest.markFinished(paths.manifest, 'success', { partial_reason: null });
+    manifest.markFinished(paths.manifest, 'success', { partial_reason: partialReason });
     logger.log({ level: 'info', stage: 'done', run_id: runId, message: 'job complete with encoded output' });
 
     return { runId, status: 'success', paths };
   } catch (err) {
-    manifest.recordPhase(paths.manifest, 'encode', 'failed', { error: err.message, code: err.code });
+    if (encodeStarted) {
+      manifest.recordPhase(paths.manifest, 'encode', 'failed', { error: err.message, code: err.code });
+    }
     manifest.markFinished(paths.manifest, 'failed', {
       error: {
         code: err.code || 'FFMPEG_FAILED',

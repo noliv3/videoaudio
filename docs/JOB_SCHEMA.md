@@ -52,8 +52,10 @@ Validierungsregeln: Beide Timing-Quellen dürfen nicht gleichzeitig gesetzt sein
 | Feld | Typ | Pflicht | Standard | Regeln |
 | --- | --- | --- | --- | --- |
 | `enable` | boolean | Nein | true | Deaktiviert LipSync, wenn false. |
-| `provider` | string | Nein | "default" | Muss in [LIPSYNC_INTERFACE](./LIPSYNC_INTERFACE.md) beschrieben sein. |
-| `params` | object | Nein | {} | Provider-spezifische Durchreichparameter. |
+| `provider` | string | Nein | — | Muss in [LIPSYNC_INTERFACE](./LIPSYNC_INTERFACE.md) beschrieben und in `config/lipsync.providers.json` registriert sein. |
+| `params` | object | Nein | {} | Provider-spezifische Durchreichparameter; `allow_passthrough` erlaubt Encode trotz Providerfehler. |
+
+LipSync wird nur ausgeführt, wenn `enable=true` **und** `provider` gesetzt ist; fehlender Provider führt zu `lipsync.skipped`. Unbekannter Provider oder fehlende Registry → `VALIDATION_ERROR`.
 
 ### comfyui
 | Feld | Typ | Pflicht | Standard | Regeln |

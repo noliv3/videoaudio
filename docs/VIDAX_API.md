@@ -56,4 +56,5 @@
 - Lauf-Status: `run_status` mit `queued|running|completed|failed`.
 - Ergebnis-Status: `exit_status` mit `success|failed|partial|null` (kein `queued|running`).
 - Phasen (prepare, comfyui, stabilize, lipsync, encode) werden im Manifest mit `queued|running|skipped|completed|failed` markiert.
+- LipSync läuft real, wenn `lipsync.enable=true` und ein Provider aus `config/lipsync.providers.json` verfügbar ist; Output liegt unter `workdir/lipsync/output.mp4`, bei `allow_passthrough=true` kann `exit_status=success` bleiben obwohl die Phase `failed` ist.
 - `final.mp4` ist ein Platzhalter; echte Generierung folgt in Stufe 2. Resume setzt `exit_status=partial` und lässt `final.mp4` unüberschrieben, bis echtes Encoding vorhanden ist.
