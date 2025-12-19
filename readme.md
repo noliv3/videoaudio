@@ -7,11 +7,13 @@ Skriptbarer Video+Audio-Runner: Job laden, validieren, optional über VIDAX star
 - ffmpeg und ffprobe im PATH
 
 ## Quickstart (CLI)
-1. `node src/main.js validate path/to/job.json`
-2. `node src/main.js run path/to/job.json --workdir /abs/workdir`
+1. `node src/main.js install` legt StateDir + Configs an und zieht Assets gemäß `config/assets.json` (Pfad override via `VIDAX_ASSETS_CONFIG`, StateDir via `VA_STATE_DIR`).
+2. `node src/main.js validate path/to/job.json`
+3. `node src/main.js run path/to/job.json --workdir /abs/workdir`
 
 ## Features
 ### Implemented (Code)
+- Setup/Installer: `va doctor` prüft ffmpeg/ffprobe/node (Python optional), `va install` erzeugt StateDir (`VA_STATE_DIR` default `~/.va`), kopiert Beispiel-Configs (`vidax.json`, `lipsync.providers.json`, `assets.json`) und lädt/verifiziert Assets aus dem Manifest (SHA-256, `on_missing` default download, `on_hash_mismatch` fail).
 - CLI-Kommandos `validate`, `run`, `status`, `logs` mit Exit-Codes aus `src/errors.js`; `run` kennt `--workdir` und `--resume`.
 - Manifest + Registry: Runs werden unter `~/.va/runs.json` registriert; `manifest.json` hält `run_status`/`exit_status`, Phasen, Seeds (inkl. Policy), Audio/FPS/Target-Frames sowie Buffer- und Zielzeitfelder.
 - Prepare: Audio-Dauer via `ffprobe`, Buffer `pre_seconds` erweitert die visuelle Zielzeit (`visual_target_duration_seconds`) und die ComfyUI-Ziel-Frames; `post_seconds` wird ohne Audio-Padding als VALIDATION_ERROR abgelehnt; Input-Hashes sind echte SHA-256-Werte oder `INPUT_NOT_FOUND`; ComfyUI-Seed wird gemäß `seed_policy` (fixed/random/per_retry) validiert/generiert, im Manifest und `effective_params` abgelegt und an ComfyUI weitergereicht.
@@ -20,7 +22,7 @@ Skriptbarer Video+Audio-Runner: Job laden, validieren, optional über VIDAX star
 - Encode: Reales ffmpeg-Muxing (CFR auf `determinism.fps`) mit Audio als Master, Trim auf Audiolänge, Dummy-Video aus Startbild/-frame falls keine ComfyUI-Frames/Videos.
 - Overwrite/Resume: `final.mp4` blockiert neuen Lauf ohne `--resume`; Resume verlangt existierendes Manifest und fehlendes Final.
 - Logging: `logs/events.jsonl` mit Zeitstempel + Stage/Level; CLI `logs` streamt diese Datei.
-- VIDAX API: `GET /health`, `GET /comfyui/health`, `POST /comfyui/start`, `POST /jobs`, `POST /jobs/:id/start`, `GET /jobs/:id`, `/manifest`, `/logs`; API-Key Pflicht über `X-API-Key`, Bind default `127.0.0.1`.
+- VIDAX API: `GET /health`, `GET /install/status`, `POST /install`, `GET /comfyui/health`, `POST /comfyui/start`, `POST /jobs`, `POST /jobs/:id/start`, `GET /jobs/:id`, `/manifest`, `/logs`; API-Key Pflicht über `X-API-Key`, Bind default `127.0.0.1`.
 
 ### Planned / Not in Code
 - Motion-Stärkeregler, Timing-Files aus den Specs werden nicht validiert oder angewendet.
@@ -36,3 +38,5 @@ Skriptbarer Video+Audio-Runner: Job laden, validieren, optional über VIDAX star
 - [`docs/VIDAX_API.md`](docs/VIDAX_API.md)
 - [`docs/SECURITY.md`](docs/SECURITY.md)
 - [`docs/OPEN_DECISIONS.md`](docs/OPEN_DECISIONS.md)
+- [`docs/SETUP.md`](docs/SETUP.md)
+- [`docs/ASSETS.md`](docs/ASSETS.md)

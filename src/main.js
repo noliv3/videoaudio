@@ -8,6 +8,8 @@ const validateJob = require('./runner/validateJob');
 const { resolveRun } = require('./runner/paths');
 const manifest = require('./runner/manifest');
 const { AppError, mapErrorToExitCode } = require('./errors');
+const { runInstallFlow } = require('./setup/install');
+const { runDoctor } = require('./setup/doctor');
 
 function loadJob(file) {
   if (!fs.existsSync(file)) {
@@ -103,6 +105,34 @@ yargs(hideBin(process.argv))
       }
       const content = fs.readFileSync(eventsPath, 'utf-8');
       console.log(content.trim());
+    } catch (err) {
+      exitWithError(err);
+    }
+  })
+  .command('doctor', 'check required system dependencies', () => {}, async () => {
+    try {
+      const result = await runDoctor({});
+      result.checks.forEach((c) => {
+        const label = c.ok ? 'OK' : 'MISSING';
+        console.log(`${label} ${c.name}${c.version ? ` (${c.version})` : ''}`);
+      });
+      if (!result.ok) {
+        throw new AppError('VALIDATION_ERROR', 'system checks failed', { checks: result.checks });
+      }
+    } catch (err) {
+      exitWithError(err);
+    }
+  })
+  .command('install', 'install configs and assets', (y) => y.option('skip-doctor', { type: 'boolean', default: false }), async (args) => {
+    try {
+      const result = await runInstallFlow({ skipDoctor: args.skipDoctor });
+      console.log(`State dir: ${result.state_dir}`);
+      console.log(`ComfyUI dir: ${result.comfy_root}`);
+      if (result.created_configs.length) {
+        console.log(`Created configs: ${result.created_configs.join(', ')}`);
+      }
+      console.log(`Assets manifest: ${result.assets.manifest}`);
+      console.log(`Assets OK: ${result.assets.ok}`);
     } catch (err) {
       exitWithError(err);
     }

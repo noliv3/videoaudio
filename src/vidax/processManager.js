@@ -1,4 +1,8 @@
+const path = require('path');
 const { spawn } = require('child_process');
+const { ensureAllAssets } = require('../setup/assets');
+const { stateDir } = require('../runner/paths');
+const { AppError } = require('../errors');
 
 const defaults = {
   health_endpoint: '/health',
@@ -36,6 +40,7 @@ class ProcessManager {
   }
 
   async ensureComfyUI() {
+    await this.ensureAssetsReady();
     const healthy = await this.checkHealth();
     if (healthy.ok) {
       this.state = 'ready';
@@ -57,11 +62,10 @@ class ProcessManager {
   async startComfyUI() {
     this.state = 'starting';
     if (!this.config.command) {
-      const error = new Error('ComfyUI command not configured');
-      error.code = 'COMFYUI_COMMAND_MISSING';
+      const err = new AppError('COMFYUI_COMMAND_MISSING', 'ComfyUI command not configured');
       this.state = 'error';
       this.startPromise = null;
-      throw error;
+      throw err;
     }
     this.spawnProcess();
 
@@ -78,15 +82,20 @@ class ProcessManager {
 
     this.state = 'error';
     this.shutdown();
-    const error = new Error('ComfyUI startup timeout');
-    error.code = 'COMFYUI_TIMEOUT';
+    const err = new AppError('COMFYUI_TIMEOUT', 'ComfyUI startup timeout');
     this.startPromise = null;
-    throw error;
+    throw err;
   }
 
   spawnProcess() {
     if (this.process) return;
     const env = Object.assign({}, process.env, this.config.env || {});
+    if (this.config.paths && this.config.paths.workflows_dir) {
+      env.COMFYUI_WORKFLOWS_DIR = this.config.paths.workflows_dir;
+    }
+    if (this.config.paths && this.config.paths.models_dir) {
+      env.COMFYUI_MODELS_DIR = this.config.paths.models_dir;
+    }
     const args = Array.isArray(this.config.args) ? this.config.args : [];
     const child = spawn(this.config.command, args, {
       cwd: this.config.cwd || process.cwd(),
@@ -115,6 +124,27 @@ class ProcessManager {
     } catch (err) {
       return { ok: false, error: err.message };
     }
+  }
+
+  async ensureAssetsReady() {
+    if (!this.config.assets_config) return true;
+    const assetsStateDir = this.config.state_dir || stateDir;
+    const status = await ensureAllAssets(this.config.assets_config, assetsStateDir, { install: false, strict: false });
+    if (!status.ok) {
+      const missing = [...(status.workflows || []), ...(status.models || [])].filter((item) => item.status !== 'ok');
+      const code = missing.some((m) => m.status === 'missing') ? 'INPUT_NOT_FOUND' : 'VALIDATION_ERROR';
+      throw new AppError(code, 'required ComfyUI assets missing or invalid', { assets: status });
+    }
+    if (!this.config.paths) {
+      this.config.paths = {};
+    }
+    if (!this.config.paths.workflows_dir) {
+      this.config.paths.workflows_dir = path.join(assetsStateDir, 'comfyui', 'workflows');
+    }
+    if (!this.config.paths.models_dir) {
+      this.config.paths.models_dir = path.join(assetsStateDir, 'comfyui', 'models');
+    }
+    return true;
   }
 
   shutdown() {

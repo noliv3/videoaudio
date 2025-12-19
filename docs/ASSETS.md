@@ -1,0 +1,21 @@
+# ComfyUI Assets Manifest & Handling
+
+- **Manifest Location**: `VIDAX_ASSETS_CONFIG` or `config/assets.json` (resolved from CWD). Paths can be absolute or relative; `~/` is expanded.
+- **StateDir Target**: Assets install into `VA_STATE_DIR` (default `~/.va`):
+  - Workflows → `comfyui/workflows/`
+  - Models → `comfyui/models/`
+- **Schema**:
+  - `workflows[]` / `models[]` entries: `{id, url, sha256, dest, unpack?, size_bytes?}`
+  - `dest` resolves relative to StateDir when not absolute.
+  - `unpack=true` expects a zip archive; contents extract into `dest` with a marker `.asset-meta.json`.
+  - `policy`: `{on_missing, on_hash_mismatch, allow_insecure_http}` defaults → `download`, `fail`, `false`.
+- **Verification Rules**:
+  - SHA-256 is enforced on downloads; mismatches raise `VALIDATION_ERROR`.
+  - Existing files with mismatched hashes honor `on_hash_mismatch` (default fail).
+  - Missing assets honor `on_missing` (default download; otherwise `INPUT_NOT_FOUND`).
+  - `allow_insecure_http=false` blocks `http://` sources.
+- **Install/Check**:
+  - `va install` and `POST /install` perform downloads + verification; failures bubble as `VALIDATION_ERROR`.
+  - `GET /install/status` reports `ok`/`missing`/`hash_mismatch`/`unknown` without downloading.
+  - Job start triggers an asset check; missing/invalid assets surface `INPUT_NOT_FOUND` or `VALIDATION_ERROR` before ComfyUI starts.
+- **Tooling Requirements**: `unzip` must exist on PATH for `unpack=true`. If absent, the asset stays uninstalled and the install step fails with `OUTPUT_WRITE_FAILED`.

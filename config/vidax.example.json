@@ -2,6 +2,8 @@
   "apiKey": "set-me",
   "port": 3000,
   "bind": "127.0.0.1",
+  "state_dir": "~/.va",
+  "assets_config": "config/assets.json",
   "comfyui": {
     "command": "python",
     "args": ["main.py"],
@@ -12,6 +14,10 @@
     "startup_timeout_ms": 60000,
     "poll_interval_ms": 500,
     "env": {},
-    "auto_start": true
+    "auto_start": true,
+    "paths": {
+      "workflows_dir": "~/.va/comfyui/workflows",
+      "models_dir": "~/.va/comfyui/models"
+    }
   }
 }

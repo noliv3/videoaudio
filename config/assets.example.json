@@ -1,0 +1,23 @@
+{
+  "policy": {
+    "on_missing": "download",
+    "on_hash_mismatch": "fail",
+    "allow_insecure_http": false
+  },
+  "workflows": [
+    {
+      "id": "demo_workflow",
+      "url": "https://example.com/comfy/workflows/demo.json",
+      "sha256": "replace-with-real-sha256",
+      "dest": "comfyui/workflows/demo.json"
+    }
+  ],
+  "models": [
+    {
+      "id": "demo_model",
+      "url": "https://example.com/comfy/models/demo.bin",
+      "sha256": "replace-with-real-sha256",
+      "dest": "comfyui/models/demo.bin"
+    }
+  ]
+}

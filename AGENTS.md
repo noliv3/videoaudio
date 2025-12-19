@@ -13,6 +13,7 @@ Scope: Repository root and all subdirectories.
 - LipSync executes when `lipsync.enable=true` and a provider exists in `config/lipsync.providers.json`; output at `workdir/lipsync/output.mp4`. `allow_passthrough=true` keeps encode alive on provider errors and must be noted in manifest/summary.
 - Buffer: `pre_seconds` extends `visual_target_duration_seconds` and ComfyUI `target_frames`; audio remains the mux horizon and `post_seconds` currently fails validation (no audio padding).
 - Prepare records SHA-256 hashes for start/audio/end inputs (or `INPUT_NOT_FOUND`) and resolves ComfyUI seeds per `seed_policy` (fixed/random/per_retry), generating missing seeds within `0..4294967295`, storing them in manifest/effective_params, and passing the final seed to ComfyUI.
+- Setup/Installer: `va doctor` checks `ffmpeg`/`ffprobe`/`node` (Python warning only); `va install` copies missing configs (`vidax.json`, `lipsync.providers.json`, `assets.json`), ensures StateDir `VA_STATE_DIR` (default `~/.va`) with `comfyui/workflows` + `comfyui/models`, and downloads/verifies assets via `config/assets.json`/`VIDAX_ASSETS_CONFIG` (SHA-256 enforced, `on_missing=download`, `on_hash_mismatch=fail`, `allow_insecure_http=false`, `unzip` required for `unpack=true`).
 
 ## Style & Content
 - Use deterministic terminology (fps, seed, resolution, target_frames) and emphasize audio-driven timing and trim rules.
