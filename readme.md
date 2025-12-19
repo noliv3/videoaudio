@@ -17,7 +17,7 @@ Spezifikation-first Repository für einen lokalen, skriptbaren Video+Audio-Runne
 ## Laufzeit-Notizen
 - CLI `run` respektiert `--resume`/`resume=1` (API) und verhindert Überschreiben von `final.mp4` ohne expliziten Resume.
 - Audio-Dauer wird zur Vorbereitung über `ffprobe` gemessen; Manifest füllt `audio_duration_seconds`, `visual_target_duration_seconds`, `fps` und `target_frames` gemäß Determinismus.
-- Platzhalter-Encoding setzt `exit_status=partial` mit `partial_reason=encode_stub`; vollständiger Encode folgt separat.
+- Encode-Phase erzeugt ein reales `final.mp4` mit ffmpeg: Audio ist Master, Video wird auf `determinism.fps` als CFR getrimmt und endet spätestens mit Audiolänge (Drift <= 1 Frame). Dummy-Video aus Startbild/-frame, falls ComfyUI keine Frames liefert.
 - VIDAX verlangt einen gesetzten API-Key und liefert strukturierte Fehlermeldungen mit Codes/Retry-Hinweisen gemäß [`docs/ERROR_MODEL.md`](docs/ERROR_MODEL.md).
 
 Alle Spezifikationen sind normativ; diese README dient nur als Einstieg und Link-Sammlung.

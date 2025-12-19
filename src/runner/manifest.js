@@ -65,6 +65,13 @@ function updateManifest(manifestPath, updater) {
   return next;
 }
 
+function recordVersions(manifestPath, versions = {}) {
+  return updateManifest(manifestPath, (m) => {
+    m.versions = Object.assign({}, m.versions || {}, versions);
+    return m;
+  });
+}
+
 function markStarted(manifestPath) {
   return updateManifest(manifestPath, (m) => {
     m.status = 'running';
@@ -135,6 +142,7 @@ module.exports = {
   markFinished,
   recordPhase,
   recordPrepare,
+  recordVersions,
   readManifest,
   computeTargetFrames,
 };

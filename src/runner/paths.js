@@ -50,6 +50,9 @@ function buildPaths(job, runId) {
     logsDir,
     events,
     manifest,
+    comfyuiOutput: path.join(base, 'comfyui', 'output.mp4'),
+    framesDir: path.join(base, 'frames'),
+    tempDir: path.join(base, 'temp'),
     final: path.join(base, finalName),
     job: path.join(base, 'job.json')
   };
