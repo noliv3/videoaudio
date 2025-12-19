@@ -13,7 +13,7 @@ Scope: Repository root and all subdirectories.
 - Do not include code snippets longer than 30 lines in any response.
 - The specification is normative; `README.md` is only an entry point and must stay concise.
 - All open decisions must be captured in `docs/OPEN_DECISIONS.md`.
-- Runner now measures audio duration via `ffprobe` for determinism and enforces resume/overwrite rules; keep manifest/output rules aligned when updating specs.
+- Runner now misst Audiolänge via `ffprobe`, erzwingt Resume/Overwrite-Regeln **und** führt einen echten ffmpeg-Encode aus (CFR nach `determinism.fps`, Video <= Audio, Dummy-Video falls keine ComfyUI-Frames). Manifest-/Output-Regeln entsprechend angleichen.
 
 ## Style & Content
 - Use deterministic terminology: surface required parameters (fps, seed, resolution, target_frames) and emphasize audio-driven timing.
