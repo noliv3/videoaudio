@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { MIN_SEED, MAX_SEED } = require('./seeds');
 
 const imageExt = ['.png', '.jpg', '.jpeg', '.webp'];
 const videoExt = ['.mp4', '.mov', '.mkv'];
@@ -111,9 +112,13 @@ function validateComfy(comfyui, errors) {
   if (!comfyui.server) {
     errors.push({ field: 'comfyui.server', message: 'server url required', code: 'VALIDATION_ERROR' });
   }
+  if (comfyui.seed_policy && !['fixed', 'random', 'per_retry'].includes(comfyui.seed_policy)) {
+    errors.push({ field: 'comfyui.seed_policy', message: 'seed_policy must be fixed, random, or per_retry', code: 'VALIDATION_ERROR' });
+  }
   if (comfyui.seed_policy === 'random' && comfyui.seed != null) {
     errors.push({ field: 'comfyui.seed', message: 'seed not allowed when seed_policy is random', code: 'VALIDATION_ERROR' });
   }
+  validateSeedValue(comfyui.seed, errors);
 }
 
 function validateLipsync(lipsync, errors) {
@@ -151,6 +156,22 @@ function validateBuffer(buffer, errors) {
     errors.push({
       field: 'buffer.post_seconds',
       message: 'post_seconds requires audio padding, which is not supported',
+      code: 'VALIDATION_ERROR',
+    });
+  }
+}
+
+function validateSeedValue(seed, errors) {
+  if (seed == null) return;
+  const numeric = typeof seed === 'string' ? Number(seed) : seed;
+  if (!Number.isFinite(numeric) || Number.isNaN(numeric) || !Number.isInteger(numeric)) {
+    errors.push({ field: 'comfyui.seed', message: 'seed must be a finite integer', code: 'VALIDATION_ERROR' });
+    return;
+  }
+  if (numeric < MIN_SEED || numeric > MAX_SEED) {
+    errors.push({
+      field: 'comfyui.seed',
+      message: `seed must be between ${MIN_SEED} and ${MAX_SEED}`,
       code: 'VALIDATION_ERROR',
     });
   }

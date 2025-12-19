@@ -44,6 +44,7 @@ function baseManifest(job, runId) {
     },
     seeds: {
       comfyui_seed: job?.comfyui?.seed ?? null,
+      comfyui_seed_policy: job?.comfyui?.seed_policy ?? 'fixed',
       lipsync_seed: null,
     },
     exit_status: null,
@@ -124,7 +125,12 @@ function recordPrepare(manifestPath, details) {
     m.input_hashes = details.hashes || m.input_hashes || {};
     const seeds = Object.assign({}, m.seeds || {});
     seeds.comfyui_seed = details.comfyuiSeed ?? (m.seeds ? m.seeds.comfyui_seed : null) ?? null;
+    seeds.comfyui_seed_policy =
+      details.comfyuiSeedPolicy ?? (m.seeds ? m.seeds.comfyui_seed_policy : null) ?? 'fixed';
     m.seeds = seeds;
+    if (details.effectiveParams) {
+      m.effective_params = details.effectiveParams;
+    }
     return m;
   });
 }
