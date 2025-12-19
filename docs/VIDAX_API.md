@@ -2,7 +2,7 @@
 
 ## Authentifizierung
 - Header `X-API-Key` ist Pflicht für alle Endpunkte.
-- Key-Quelle: `VIDAX_API_KEY` env oder `config/vidax.json` Feld `apiKey`.
+- Key-Quelle: `VIDAX_API_KEY` env oder `vidax.json` (Auflösung: `VIDAX_CONFIG` → `VA_STATE_DIR/state/config/vidax.json` → `config/vidax.json`).
 - Fehlender Key führt zu `401`, falscher Key zu `403`; ohne Key startet der Server nicht.
 
 ## Endpunkte
@@ -12,13 +12,13 @@
 
 ### GET /install/status
 - Antwort `200 OK` mit `{ok:boolean, assets:{...}}` aus dem Assets-Checker (`install=false`).
-- Keine Downloads; meldet `missing`, `hash_mismatch` oder `unknown` für Einträge aus `config/assets.json` bzw. `VIDAX_ASSETS_CONFIG`.
+- Keine Downloads; meldet `missing`, `hash_mismatch` oder `unknown` für Einträge aus dem aufgelösten Manifest (`VIDAX_ASSETS_CONFIG` → `VA_STATE_DIR/state/config/assets.json` → `config/assets.json`).
 - Fehler: `404` bei fehlender Manifest-Datei (`INPUT_NOT_FOUND`), `400` bei Parserfehlern (`VALIDATION_ERROR`).
 
 ### POST /install
-- Führt `ensureAllAssets` aus (`install=true`), lädt + verifiziert gemäß Manifest-Policy (`on_missing` default download, `on_hash_mismatch` default fail).
+- Führt `ensureAllAssets` aus (`install=true`), lädt + verifiziert gemäß Manifest-Policy (`on_missing` default download, `on_hash_mismatch` default fail); Download/Hash-Fehler mappen auf `UNSUPPORTED_FORMAT`, Schreib-/Unzip-Probleme auf `OUTPUT_WRITE_FAILED`.
 - Antwort `200 OK` mit `{ok:true, assets:{...}}` wenn alles vorhanden ist.
-- Fehler: `400` bei fehlgeschlagener Installation/Verification (`VALIDATION_ERROR`), `404` bei fehlender Manifest-Datei.
+- Fehler: `400` bei fehlgeschlagener Installation/Verification (`UNSUPPORTED_FORMAT`), `404` bei fehlender Manifest-Datei.
 
 ### GET /comfyui/health
 - Antwort `200 OK` mit `{ok:boolean, ...}` aus ComfyUI Health-Check.
@@ -43,7 +43,7 @@
 - Ablauf:
   - Job + Paths aus Memory/Disk laden.
   - Overwrite-Regeln: vorhandenes `final.mp4` → `OUTPUT_WRITE_FAILED`; Resume nur erlaubt, wenn Manifest existiert und `final.mp4` fehlt.
-  - `processManager.ensureComfyUI()` wird vor Job-Start ausgeführt; fehlt ein Asset aus dem Manifest → `INPUT_NOT_FOUND`/`VALIDATION_ERROR`; Health/Start-Fehler mappen auf `424` (`COMFYUI_UNAVAILABLE|COMFYUI_TIMEOUT`), interne Fehler auf `500`.
+  - `processManager.ensureComfyUI()` wird vor Job-Start ausgeführt; fehlt ein Asset aus dem Manifest → `INPUT_NOT_FOUND`/`UNSUPPORTED_FORMAT`; Health/Start-Fehler mappen auf `424` (`COMFYUI_UNAVAILABLE|COMFYUI_TIMEOUT`), interne Fehler auf `500`.
   - Runner `comfyui`-Phase führt `submit -> wait -> collect` aus und kopiert Outputs nach `workdir/comfyui/output.mp4` oder `workdir/frames/`.
   - Runner `comfyui`-Phase wird mit Kontext `{ comfyuiClient, processManager }` ausgeführt.
 - Antwort `202 Accepted` bei Start, Status landet in Manifest/Logs.

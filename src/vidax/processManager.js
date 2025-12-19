@@ -1,7 +1,7 @@
 const path = require('path');
 const { spawn } = require('child_process');
 const { ensureAllAssets } = require('../setup/assets');
-const { stateDir } = require('../runner/paths');
+const { stateRoot } = require('../runner/paths');
 const { AppError } = require('../errors');
 
 const defaults = {
@@ -128,11 +128,11 @@ class ProcessManager {
 
   async ensureAssetsReady() {
     if (!this.config.assets_config) return true;
-    const assetsStateDir = this.config.state_dir || stateDir;
+    const assetsStateDir = this.config.state_dir || stateRoot;
     const status = await ensureAllAssets(this.config.assets_config, assetsStateDir, { install: false, strict: false });
     if (!status.ok) {
       const missing = [...(status.workflows || []), ...(status.models || [])].filter((item) => item.status !== 'ok');
-      const code = missing.some((m) => m.status === 'missing') ? 'INPUT_NOT_FOUND' : 'VALIDATION_ERROR';
+      const code = missing.some((m) => m.status === 'missing') ? 'INPUT_NOT_FOUND' : 'UNSUPPORTED_FORMAT';
       throw new AppError(code, 'required ComfyUI assets missing or invalid', { assets: status });
     }
     if (!this.config.paths) {

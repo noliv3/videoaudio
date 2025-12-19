@@ -7,15 +7,17 @@ Skriptbarer Video+Audio-Runner: Job laden, validieren, optional über VIDAX star
 - ffmpeg und ffprobe im PATH
 
 ## Quickstart (CLI)
-1. `node src/main.js install` legt StateDir + Configs an und zieht Assets gemäß `config/assets.json` (Pfad override via `VIDAX_ASSETS_CONFIG`, StateDir via `VA_STATE_DIR`).
-2. `node src/main.js validate path/to/job.json`
-3. `node src/main.js run path/to/job.json --workdir /abs/workdir`
+1. `node src/main.js doctor` prüft ffmpeg/ffprobe/node (Exit 20 wenn ffmpeg/ffprobe fehlen).
+2. `node src/main.js install` legt StateDir + Configs an und zieht Assets gemäß Assets-Manifest (Auflösung: `VIDAX_ASSETS_CONFIG` → `VA_STATE_DIR/state/config/assets.json` → `config/assets.json`; StateDir via `VA_STATE_DIR`, default `~/.va/state`).
+3. `node src/main.js validate path/to/job.json`
+4. `node src/main.js run path/to/job.json --workdir /abs/workdir`
+5. `VIDAX_CONFIG=... node src/vidax/server.js` startet die API (Config-Auflösung: `VIDAX_CONFIG` → `VA_STATE_DIR/state/config/vidax.json` → `config/vidax.json`)
 
 ## Features
 ### Implemented (Code)
-- Setup/Installer: `va doctor` prüft ffmpeg/ffprobe/node (Python optional), `va install` erzeugt StateDir (`VA_STATE_DIR` default `~/.va`), kopiert Beispiel-Configs (`vidax.json`, `lipsync.providers.json`, `assets.json`) und lädt/verifiziert Assets aus dem Manifest (SHA-256, `on_missing` default download, `on_hash_mismatch` fail).
+- Setup/Installer: `va doctor` prüft ffmpeg/ffprobe/node (Python optional) und liefert Exit 20 bei fehlendem ffmpeg/ffprobe; `va install` erzeugt StateDir unter `VA_STATE_DIR/state` (default `~/.va/state`), kopiert Beispiel-Configs in `state/config` (`vidax.json`, `lipsync.providers.json`, `assets.json`) und lädt/verifiziert Assets aus dem Manifest (SHA-256, `on_missing` default download, `on_hash_mismatch` fail, `allow_insecure_http=false`, hash-Fehler → `UNSUPPORTED_FORMAT`).
 - CLI-Kommandos `validate`, `run`, `status`, `logs` mit Exit-Codes aus `src/errors.js`; `run` kennt `--workdir` und `--resume`.
-- Manifest + Registry: Runs werden unter `~/.va/runs.json` registriert; `manifest.json` hält `run_status`/`exit_status`, Phasen, Seeds (inkl. Policy), Audio/FPS/Target-Frames sowie Buffer- und Zielzeitfelder.
+- Manifest + Registry: Runs werden unter `~/.va/state/runs.json` registriert; `manifest.json` hält `run_status`/`exit_status`, Phasen, Seeds (inkl. Policy), Audio/FPS/Target-Frames sowie Buffer- und Zielzeitfelder.
 - Prepare: Audio-Dauer via `ffprobe`, Buffer `pre_seconds` erweitert die visuelle Zielzeit (`visual_target_duration_seconds`) und die ComfyUI-Ziel-Frames; `post_seconds` wird ohne Audio-Padding als VALIDATION_ERROR abgelehnt; Input-Hashes sind echte SHA-256-Werte oder `INPUT_NOT_FOUND`; ComfyUI-Seed wird gemäß `seed_policy` (fixed/random/per_retry) validiert/generiert, im Manifest und `effective_params` abgelegt und an ComfyUI weitergereicht.
 - ComfyUI: Nur wenn `comfyui.workflow_ids[0]` gesetzt und Client verfügbar → `submit → wait (poll_interval_ms default 500) → collect` nach `workdir/comfyui/output.mp4` oder `workdir/frames/`; sonst Phase `skipped`.
 - LipSync: Läuft nur bei `lipsync.enable` (default true) **und** vorhandenem Provider in `config/lipsync.providers.json`; Output `workdir/lipsync/output.mp4`; `allow_passthrough=true` erlaubt Encode trotz Fehler.

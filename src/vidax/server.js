@@ -7,7 +7,7 @@ const createAuthMiddleware = require('./auth');
 const ProcessManager = require('./processManager');
 const ComfyUIClient = require('./comfyuiClient');
 const { AppError } = require('../errors');
-const { stateDir } = require('../runner/paths');
+const { stateRoot } = require('../runner/paths');
 const { resolveAssetsConfigPath } = require('../setup/assets');
 
 function expandPath(p) {
@@ -20,18 +20,19 @@ function expandPath(p) {
 }
 
 function loadConfig() {
-  const configPath = process.env.VIDAX_CONFIG || path.join(process.cwd(), 'config', 'vidax.json');
+  const candidateStateConfig = path.join(stateRoot, 'config', 'vidax.json');
+  const configPath = process.env.VIDAX_CONFIG || (fs.existsSync(candidateStateConfig) ? candidateStateConfig : path.join(process.cwd(), 'config', 'vidax.json'));
   if (fs.existsSync(configPath)) {
     const fileConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     fileConfig.assets_config = process.env.VIDAX_ASSETS_CONFIG || fileConfig.assets_config || resolveAssetsConfigPath();
-    fileConfig.state_dir = expandPath(process.env.VA_STATE_DIR || fileConfig.state_dir || stateDir);
+    fileConfig.state_dir = expandPath(fileConfig.state_dir || stateRoot);
     return fileConfig;
   }
   return {
     apiKey: process.env.VIDAX_API_KEY,
     port: process.env.VIDAX_PORT || 3000,
     bind: process.env.VIDAX_BIND || '127.0.0.1',
-    state_dir: expandPath(process.env.VA_STATE_DIR || stateDir),
+    state_dir: expandPath(stateRoot),
     assets_config: process.env.VIDAX_ASSETS_CONFIG || resolveAssetsConfigPath(),
     comfyui: {},
   };
@@ -53,9 +54,9 @@ function startServer() {
     config.comfyui = {};
   }
   config.assets_config = expandPath(config.assets_config || resolveAssetsConfigPath());
-  config.state_dir = expandPath(config.state_dir || stateDir);
+  config.state_dir = expandPath(config.state_dir || stateRoot);
   if (!config.comfyui.state_dir) {
-    config.comfyui.state_dir = config.state_dir || stateDir;
+    config.comfyui.state_dir = config.state_dir || stateRoot;
   }
   if (!config.comfyui.assets_config) {
     config.comfyui.assets_config = config.assets_config || resolveAssetsConfigPath();

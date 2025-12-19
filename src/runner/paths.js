@@ -3,10 +3,11 @@ const os = require('os');
 const path = require('path');
 
 const stateDir = process.env.VA_STATE_DIR || path.join(os.homedir(), '.va');
-const registryPath = path.join(stateDir, 'runs.json');
+const stateRoot = path.join(stateDir, 'state');
+const registryPath = path.join(stateRoot, 'runs.json');
 
 function ensureStateDir() {
-  fs.mkdirSync(stateDir, { recursive: true });
+  fs.mkdirSync(stateRoot, { recursive: true });
   if (!fs.existsSync(registryPath)) {
     fs.writeFileSync(registryPath, JSON.stringify({}), 'utf-8');
   }
@@ -78,5 +79,6 @@ module.exports = {
   registerRun,
   resolveRun,
   stateDir,
+  stateRoot,
   registryPath
 };

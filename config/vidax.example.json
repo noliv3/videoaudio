@@ -2,8 +2,8 @@
   "apiKey": "set-me",
   "port": 3000,
   "bind": "127.0.0.1",
-  "state_dir": "~/.va",
-  "assets_config": "config/assets.json",
+  "state_dir": "~/.va/state",
+  "assets_config": "~/.va/state/config/assets.json",
   "comfyui": {
     "command": "python",
     "args": ["main.py"],
@@ -16,8 +16,8 @@
     "env": {},
     "auto_start": true,
     "paths": {
-      "workflows_dir": "~/.va/comfyui/workflows",
-      "models_dir": "~/.va/comfyui/models"
+      "workflows_dir": "~/.va/state/comfyui/workflows",
+      "models_dir": "~/.va/state/comfyui/models"
     }
   }
 }
