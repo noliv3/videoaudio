@@ -24,6 +24,7 @@ function mapHttpStatus(code) {
     case 'COMFYUI_TIMEOUT':
     case 'COMFYUI_BAD_RESPONSE':
     case 'LIPSYNC_FAILED':
+    case 'COMFYUI_UNAVAILABLE':
       return 424;
     case 'FFMPEG_FAILED':
     case 'OUTPUT_WRITE_FAILED':
@@ -157,6 +158,10 @@ function createRouter(config, deps = {}) {
       if (!resume && finalExists) {
         throw new AppError('OUTPUT_WRITE_FAILED', 'final output already exists; use resume flag', { final: paths.final });
       }
+      if (!processManager) {
+        throw new AppError('COMFYUI_UNAVAILABLE', 'comfyui process manager missing');
+      }
+      await processManager.ensureComfyUI();
       res.status(202).json({ run_id: req.params.id, status: 'started', resume });
       runJob(job, { runId: req.params.id, resume, vidax: { comfyuiClient, processManager } }).catch(() => {});
     } catch (err) {

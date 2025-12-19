@@ -8,13 +8,19 @@
 - Zusatzparameter: `motion.strength`, `motion.guidance`, Stabilization-Hinweise falls Workflow sie erwartet.
 
 ## Erwartete Outputs
-- Entweder Frame-Sequenz (PNG/WEBP) oder ein vorgerendertes Video (CFR). Runner akzeptiert beides.
-- Metadaten: verwendeter Seed, effektive Workflow-ID, genutzte Steps (falls bereitgestellt) zur Manifest-Schreibung.
+- Entweder Frame-Sequenz (PNG/WEBP) oder ein vorgerendertes Video (CFR). Runner akzeptiert beides und kopiert die Outputs in `workdir/comfyui/output.mp4` bzw. `workdir/frames/%06d.png`.
+- Metadaten: verwendeter Seed, Workflow-ID, prompt_id und Output-Typ landen in der ComfyUI-Phase des Manifests (`output_kind`, `output_paths`).
 
 ## Retry- und Backoff-Policy
 - Felder: `max_attempts` (default 3), `base_delay_ms` (default 500), `max_delay_ms` (default 5000), `jitter` (0-1, default 0.25), `timeout_connect`, `timeout_total` (aus Job Schema), `max_retries_per_workflow` (optional, default = `max_attempts`).
 - Backoff: exponentiell mit Jitter, gecappt bei `max_delay_ms`.
 - Retryable Fehler: `COMFYUI_TIMEOUT`, `COMFYUI_BAD_RESPONSE`, Netzwerk-Disconnects; nicht retryable: `VALIDATION_ERROR`, `UNSUPPORTED_FORMAT`.
+
+## Submit + Wait + Collect
+- Wenn `workflow_id` gesetzt: Runner ruft `submitPrompt(payload)` auf, wartet mit `waitForCompletion(prompt_id, {timeout_total, poll_interval_ms=500})` auf Abschluss und zieht die gelieferten Files via `collectOutputs`.
+- Polling erfolgt über den ComfyUI-History-Endpunkt (`/history/<prompt_id>` oder `/history?prompt_id=`). Timeout führt zu `COMFYUI_TIMEOUT` und ComfyUI-Phase `failed`.
+- Output-Priorität: bereitgestelltes Video → `workdir/comfyui/output.mp4`, sonst Frames → `workdir/frames/`. Fehlen Outputs → `COMFYUI_BAD_RESPONSE`.
+- Bei fehlender `workflow_id` wird die ComfyUI-Phase `skipped` markiert; encode nutzt Dummy/Startbild.
 
 ## Workflow-Referenz
 - Runner speichert nur `workflow_id` (string) und optional eine Liste `workflow_ids` als Fallback; keine Graphen im Job-Dokument.

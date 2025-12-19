@@ -8,6 +8,7 @@ Scope: Repository root and all subdirectories.
 - Tests are not required at this stage; do not introduce or run automated tests unless explicitly requested by future instructions.
 - Any documentation updates must be reflected in both this `AGENTS.md` and the repository `README.md`.
   - Neuer Input-Buffer-Scope dokumentiert in `docs/INPUT_ABSTRACTION.md` und `docs/CLI_INPUT_MODEL.md`; README verlinkt diese.
+- ComfyUI-Phase ist blocking: submit → poll (`poll_interval_ms` default 500, `timeout_total` respektiert) → collect; Outputs landen in `workdir/comfyui/output.mp4` oder `workdir/frames/`, Manifest speichert `workflow_id`, `prompt_id`, `output_kind`, `output_paths`.
 - VIDAX HTTP API and security notes live in `docs/VIDAX_API.md` and `docs/SECURITY.md`; keep these in sync when touching runner behavior or auth.
 - Output must be Markdown-only; avoid non-Markdown payloads.
 - Do not include code snippets longer than 30 lines in any response.
