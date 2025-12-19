@@ -113,12 +113,14 @@ yargs(hideBin(process.argv))
     try {
       const result = await runDoctor({});
       result.checks.forEach((c) => {
-        const label = c.ok ? 'OK' : 'MISSING';
-        console.log(`${label} ${c.name}${c.version ? ` (${c.version})` : ''}`);
+        const label = c.ok ? 'ok' : 'missing';
+        const reason = c.ok ? '' : (c.error ? `: ${c.error}` : '');
+        console.log(`${label} ${c.name}${c.version ? ` (${c.version})` : ''}${reason}`);
       });
       if (!result.ok) {
-        throw new AppError('VALIDATION_ERROR', 'system checks failed', { checks: result.checks });
+        process.exit(mapErrorToExitCode('UNSUPPORTED_FORMAT'));
       }
+      process.exit(0);
     } catch (err) {
       exitWithError(err);
     }

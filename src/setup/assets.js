@@ -1,12 +1,14 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const os = require('os');
 const http = require('http');
 const https = require('https');
 const { pipeline } = require('stream');
 const { promisify } = require('util');
 const { spawn } = require('child_process');
 const { AppError } = require('../errors');
+const { stateRoot } = require('../runner/paths');
 
 const streamPipeline = promisify(pipeline);
 const defaultPolicy = {
@@ -15,8 +17,24 @@ const defaultPolicy = {
   allow_insecure_http: false,
 };
 
+function expandPath(p) {
+  if (!p) return null;
+  if (p.startsWith('~/')) {
+    return path.join(os.homedir(), p.slice(2));
+  }
+  if (path.isAbsolute(p)) return p;
+  return path.resolve(p);
+}
+
 function resolveAssetsConfigPath() {
-  return process.env.VIDAX_ASSETS_CONFIG || path.join(process.cwd(), 'config', 'assets.json');
+  if (process.env.VIDAX_ASSETS_CONFIG) {
+    return expandPath(process.env.VIDAX_ASSETS_CONFIG);
+  }
+  const stateConfig = path.join(stateRoot, 'config', 'assets.json');
+  if (fs.existsSync(stateConfig)) {
+    return stateConfig;
+  }
+  return path.join(process.cwd(), 'config', 'assets.json');
 }
 
 function readManifest(manifestPath) {
@@ -35,7 +53,7 @@ function readManifest(manifestPath) {
 async function downloadTo(url, dest, options = {}) {
   const { allowInsecure = false } = options;
   if (!allowInsecure && url.startsWith('http://')) {
-    throw new AppError('VALIDATION_ERROR', 'insecure download blocked', { url });
+    throw new AppError('UNSUPPORTED_FORMAT', 'insecure download blocked', { url });
   }
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   const client = url.startsWith('https://') ? https : http;
@@ -135,7 +153,7 @@ async function installAsset(asset, policy, stateDir) {
     return { id: asset.id, path: paths.destPath, status: 'ok', action: 'present', hash: existing.hash || null };
   }
   if (existing.status === 'hash_mismatch' && policy.on_hash_mismatch === 'fail') {
-    throw new AppError('VALIDATION_ERROR', 'asset hash mismatch', { asset: asset.id, path: paths.destPath, expected: asset.sha256, actual: existing.hash });
+    throw new AppError('UNSUPPORTED_FORMAT', 'asset hash mismatch', { asset: asset.id, path: paths.destPath, expected: asset.sha256, actual: existing.hash });
   }
   if (existing.status === 'missing' && policy.on_missing !== 'download') {
     throw new AppError('INPUT_NOT_FOUND', 'asset missing', { asset: asset.id, path: paths.destPath });
@@ -145,7 +163,7 @@ async function installAsset(asset, policy, stateDir) {
   await downloadTo(asset.url, downloadTarget, { allowInsecure: policy.allow_insecure_http });
   const downloadedHash = await sha256File(downloadTarget);
   if (asset.sha256 && downloadedHash !== asset.sha256) {
-    throw new AppError('VALIDATION_ERROR', 'asset hash mismatch after download', { asset: asset.id, expected: asset.sha256, actual: downloadedHash });
+    throw new AppError('UNSUPPORTED_FORMAT', 'asset hash mismatch after download', { asset: asset.id, expected: asset.sha256, actual: downloadedHash });
   }
   if (asset.unpack) {
     await unpackZip(downloadTarget, paths.destPath);

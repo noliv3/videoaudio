@@ -1,5 +1,5 @@
 const { spawnSync } = require('child_process');
-const { AppError } = require('../errors');
+const { AppError, mapErrorToExitCode } = require('../errors');
 
 function checkCommand(command, args = ['-version'], options = {}) {
   const { critical = true } = options;
@@ -22,13 +22,14 @@ async function runDoctor(options = {}) {
     checkCommand('python', ['-V'], { critical: !!requirePython }),
   ];
   const criticalFailed = checks.filter((c) => c.critical && !c.ok);
-  return { ok: criticalFailed.length === 0, checks };
+  const exitCode = criticalFailed.length === 0 ? 0 : mapErrorToExitCode('UNSUPPORTED_FORMAT');
+  return { ok: criticalFailed.length === 0, checks, exitCode };
 }
 
 async function assertDoctor(options = {}) {
   const result = await runDoctor(options);
   if (!result.ok) {
-    throw new AppError('VALIDATION_ERROR', 'system checks failed', { checks: result.checks });
+    throw new AppError('VALIDATION_ERROR', 'system checks failed', { checks: result.checks }, false);
   }
   return result;
 }
