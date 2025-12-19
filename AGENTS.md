@@ -3,27 +3,22 @@
 Scope: Repository root and all subdirectories.
 
 ## Working Mode
-- This project is a specification-first effort for a local, scriptable video+audio pipeline. Keep outputs concise and avoid full
- executable code, workflow JSON dumps, or large class definitions. Favor structured descriptions, interfaces, and pseudocode only.
-- Tests are not required at this stage; do not introduce or run automated tests unless explicitly requested by future instructions.
-- Any documentation updates must be reflected in both this `AGENTS.md` and the repository `README.md`.
-  - Neuer Input-Buffer-Scope dokumentiert in `docs/INPUT_ABSTRACTION.md` und `docs/CLI_INPUT_MODEL.md`; README verlinkt diese.
-- ComfyUI-Phase ist blocking: submit → poll (`poll_interval_ms` default 500, `timeout_total` respektiert) → collect; Outputs landen in `workdir/comfyui/output.mp4` oder `workdir/frames/`, Manifest speichert `workflow_id`, `prompt_id`, `output_kind`, `output_paths`.
-- VIDAX HTTP API and security notes live in `docs/VIDAX_API.md` and `docs/SECURITY.md`; keep these in sync when touching runner behavior or auth.
-- Output must be Markdown-only; avoid non-Markdown payloads.
-- Do not include code snippets longer than 30 lines in any response.
-- The specification is normative; `README.md` is only an entry point and must stay concise.
-- All open decisions must be captured in `docs/OPEN_DECISIONS.md`.
-- Runner now misst Audiolänge via `ffprobe`, erzwingt Resume/Overwrite-Regeln **und** führt einen echten ffmpeg-Encode aus (CFR nach `determinism.fps`, Video <= Audio, Dummy-Video falls keine ComfyUI-Frames). Manifest-/Output-Regeln entsprechend angleichen.
-- LipSync läuft real, sobald `lipsync.enable=true` und ein Provider aus `config/lipsync.providers.json` aufgelöst werden kann; Output unter `workdir/lipsync/output.mp4`, Passthrough (`allow_passthrough=true`) hält den Encode bei Providerfehlern am Leben.
+- Specification-first, but docs must reflect actual code; reconcile discrepancies and record them instead of introducing theoretical behavior.
+- Feedback ohne Dateiinhalte: Responses stay Markdown-only and must not paste file bodies.
+- Outputs must stay Markdown-only, concise, and free of file contents; avoid workflow dumps or class-sized code. No code snippets longer than 30 lines.
+- Tests are out of scope; do not add or run automated tests unless explicitly requested.
+- Any documentation changes must be mirrored in both this `AGENTS.md` and `README.md`. Capture unresolved or diverging points in `docs/OPEN_DECISIONS.md` (or equivalent compliance notes) when touched.
+- ComfyUI phase is blocking submit → poll (`poll_interval_ms` default 500, `timeout_total` respected) → collect to `workdir/comfyui/output.mp4` or `workdir/frames/`; manifest stores `workflow_id`, `prompt_id`, `output_kind`, `output_paths`.
+- Runner enforces resume/overwrite rules, measures audio via `ffprobe`, and performs a real ffmpeg encode (CFR at `determinism.fps`, video duration capped to audio, dummy video from start image/frame if needed).
+- LipSync executes when `lipsync.enable=true` and a provider exists in `config/lipsync.providers.json`; output at `workdir/lipsync/output.mp4`. `allow_passthrough=true` keeps encode alive on provider errors and must be noted in manifest/summary.
 
 ## Style & Content
-- Use deterministic terminology: surface required parameters (fps, seed, resolution, target_frames) and emphasize audio-driven timing.
-- When describing flows, prefer bullet lists or tables over long prose. Cite defaults and validation rules clearly.
-- Keep scope lean: focus on job specification, orchestration steps, and integration touchpoints (ComfyUI REST, LipSync CLI, ffmpeg mux). Avoid embedding actual workflow graphs.
-- Run manifests now separate `run_status` (queued/running/completed/failed) from `exit_status` (success/failed/partial/null).
-- VIDAX must manage ComfyUI lifecycle (health/start) before comfyui runner phase; surface endpoints in VIDAX docs accordingly.
+- Use deterministic terminology (fps, seed, resolution, target_frames) and emphasize audio-driven timing and trim rules.
+- Prefer bullet lists or tables for flows; surface defaults, validation, and output locations clearly.
+- Keep scope lean: focus on job spec, orchestration, ComfyUI REST, LipSync CLI, ffmpeg mux. Avoid workflow graphs.
+- Manifest wording separates `run_status` (queued/running/completed/failed) from `exit_status` (success/failed/partial/null).
+- VIDAX must manage ComfyUI lifecycle (health/start) before the comfyui runner phase; keep `docs/VIDAX_API.md` and `docs/SECURITY.md` aligned with actual runner/auth behavior.
 
 ## Commit & PR
-- Ensure each change is committed on the current branch and accompanied by a PR message via `make_pr` after committing.
-- Summaries should mention specs added or updated.
+- Commit changes on the current branch and call `make_pr` with a PR message after committing.
+- Summaries should highlight which specs or docs were added or updated.
