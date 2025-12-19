@@ -3,10 +3,11 @@ const fs = require('fs');
 const { randomUUID } = require('crypto');
 const validateJob = require('../runner/validateJob');
 const runJob = require('../runner/runJob');
-const { buildPaths, prepareWorkdir, registerRun, resolveRun } = require('../runner/paths');
+const { buildPaths, prepareWorkdir, registerRun, resolveRun, stateDir } = require('../runner/paths');
 const manifest = require('../runner/manifest');
 const RunnerLogger = require('../runner/logger');
 const { AppError, errorResponse } = require('../errors');
+const { ensureAllAssets, resolveAssetsConfigPath } = require('../setup/assets');
 
 function mapHttpStatus(code) {
   switch (code) {
@@ -46,6 +47,31 @@ function createRouter(config, deps = {}) {
 
   router.get('/health', (_req, res) => {
     res.json({ ok: true });
+  });
+
+  router.get('/install/status', async (_req, res) => {
+    try {
+      const manifestPath = config.assets_config || resolveAssetsConfigPath();
+      const assetsStatus = await ensureAllAssets(manifestPath, config.state_dir || stateDir, { install: false, strict: false });
+      res.json({ ok: assetsStatus.ok, assets: assetsStatus });
+    } catch (err) {
+      const wrapped = err instanceof AppError ? err : new AppError(err.code || 'VALIDATION_ERROR', err.message, err.details);
+      handleError(res, wrapped);
+    }
+  });
+
+  router.post('/install', async (_req, res) => {
+    try {
+      const manifestPath = config.assets_config || resolveAssetsConfigPath();
+      const assetsStatus = await ensureAllAssets(manifestPath, config.state_dir || stateDir, { install: true, strict: false });
+      if (!assetsStatus.ok) {
+        throw new AppError('VALIDATION_ERROR', 'asset install incomplete', { assets: assetsStatus });
+      }
+      res.json({ ok: true, assets: assetsStatus });
+    } catch (err) {
+      const wrapped = err instanceof AppError ? err : new AppError(err.code || 'VALIDATION_ERROR', err.message, err.details);
+      handleError(res, wrapped);
+    }
   });
 
   router.get('/comfyui/health', async (_req, res) => {
