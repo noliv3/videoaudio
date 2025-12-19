@@ -7,8 +7,8 @@ const streamPipeline = promisify(pipeline);
 
 class ComfyUIClient {
   constructor(config = {}) {
-    this.baseUrl = config.url;
-    this.healthEndpoint = config.health_endpoint || '/health';
+    this.baseUrl = config.url || 'http://127.0.0.1:8188';
+    this.healthEndpoint = config.health_endpoint || '/system_stats';
     this.promptEndpoint = config.prompt_endpoint || '/prompt';
     this.historyEndpoint = config.history_endpoint || '/history';
     this.viewEndpoint = config.view_endpoint || '/view';
@@ -21,9 +21,8 @@ class ComfyUIClient {
     }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeout);
-    try {
-      const res = await fetch(`${this.baseUrl}${this.healthEndpoint}`, { signal: controller.signal });
-      clearTimeout(timer);
+    const attemptHealth = async (endpoint) => {
+      const res = await fetch(`${this.baseUrl}${endpoint}`, { signal: controller.signal });
       if (!res.ok) {
         return { ok: false, status: res.status, statusText: res.statusText };
       }
@@ -33,7 +32,17 @@ class ComfyUIClient {
       } catch (err) {
         data = null;
       }
-      return { ok: true, url: this.baseUrl, data };
+      return { ok: true, url: this.baseUrl, status: res.status, data };
+    };
+    try {
+      const first = await attemptHealth(this.healthEndpoint);
+      if (first.ok || this.healthEndpoint === '/health') {
+        clearTimeout(timer);
+        return first;
+      }
+      const fallback = await attemptHealth('/health');
+      clearTimeout(timer);
+      return fallback;
     } catch (err) {
       clearTimeout(timer);
       return { ok: false, error: err.message };

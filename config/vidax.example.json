@@ -6,10 +6,10 @@
   "assets_config": "~/.va/state/config/assets.json",
   "comfyui": {
     "command": "python",
-    "args": ["main.py"],
+    "args": ["main.py", "--listen", "127.0.0.1", "--port", "8188"],
     "cwd": "../ComfyUI",
-    "url": "http://localhost:8188",
-    "health_endpoint": "/health",
+    "url": "http://127.0.0.1:8188",
+    "health_endpoint": "/system_stats",
     "prompt_endpoint": "/prompt",
     "startup_timeout_ms": 60000,
     "poll_interval_ms": 500,

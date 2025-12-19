@@ -63,11 +63,14 @@ LipSync wird nur ausgeführt, wenn `enable=true` **und** `provider` gesetzt ist;
 | --- | --- | --- | --- | --- |
 | `server` | string (URL) | Ja | — | Basis-URL des ComfyUI-Servers. |
 | `workflow_ids` | array[string] | Nein | [] | Liste möglicher Workflow-IDs; erste nutzbare wird gewählt. |
+| `params` | object | Nein | {} | Optional: `prompt`, `negative`/`negative_prompt`, `width`, `height`, `steps`, `cfg`, `sampler`, `scheduler`; Defaults: Prompt aus `motion.prompt`, negative leer, Auflösung 768x768, `steps=20`, `cfg=motion.guidance` oder 7.5, `sampler="dpmpp_2m"`, `scheduler="karras"`. |
 | `seed_policy` | string | Nein | "fixed" | Werte: `fixed` (verwende bereitgestellten Seed oder generiere einen), `random` (immer generiert, bereitgestellter Seed verboten), `per_retry` (neuer Seed pro Submit-Versuch; aktuell wird der erste Laufseed genutzt, da keine Retry-Schleife aktiv ist). |
 | `seed` | integer | Nein | generiert | Muss Integer im Bereich `0..4294967295` sein; verboten, wenn `seed_policy=random`. |
 | `retries` | integer | Nein | 2 | Max. Wiederholungen bei retryable Fehlern. |
 | `timeout_connect` | integer (ms) | Nein | 5000 | Verbindungstimeout. |
 | `timeout_total` | integer (ms) | Nein | 120000 | Gesamtzeit pro Versuch. |
+
+Wenn `workflow_ids` fehlt oder leer ist, setzt der Runner intern `workflow_ids[0]="vidax_text2img_frames"` und reicht die oben genannten Parameter an den Standard-Workflow weiter.
 
 ### output
 | Feld | Typ | Pflicht | Standard | Regeln |

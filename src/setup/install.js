@@ -7,12 +7,14 @@ const { ensureAllAssets, resolveAssetsConfigPath } = require('./assets');
 
 function ensureStateDirs(baseDir = stateRoot) {
   const comfyRoot = path.join(baseDir, 'comfyui');
+  const bundledRoot = path.join(baseDir, 'assets');
   const stateConfigDir = path.join(baseDir, 'config');
   fs.mkdirSync(path.join(comfyRoot, 'workflows'), { recursive: true });
   fs.mkdirSync(path.join(comfyRoot, 'models'), { recursive: true });
+  fs.mkdirSync(path.join(bundledRoot, 'workflows'), { recursive: true });
   fs.mkdirSync(stateConfigDir, { recursive: true });
   fs.mkdirSync(path.join(baseDir, 'runs'), { recursive: true });
-  return { state_dir: baseDir, comfy_root: comfyRoot, config_dir: stateConfigDir };
+  return { state_dir: baseDir, comfy_root: comfyRoot, config_dir: stateConfigDir, bundled_root: bundledRoot };
 }
 
 function copyIfMissing(examplePath, targetPath) {
@@ -42,6 +44,25 @@ function ensureConfigFiles(baseDir = process.cwd()) {
   return created;
 }
 
+function ensureBundledWorkflows(baseDir = process.cwd()) {
+  const created = [];
+  const bundles = [
+    {
+      example: path.join(baseDir, 'assets', 'workflows', 'vidax_text2img_frames.json'),
+      target: path.join(stateRoot, 'assets', 'workflows', 'vidax_text2img_frames.json'),
+    },
+  ];
+  bundles.forEach((pair) => {
+    if (!fs.existsSync(pair.example)) {
+      throw new AppError('INPUT_NOT_FOUND', 'bundled workflow missing', { example: pair.example });
+    }
+    fs.mkdirSync(path.dirname(pair.target), { recursive: true });
+    fs.copyFileSync(pair.example, pair.target);
+    created.push(pair.target);
+  });
+  return created;
+}
+
 async function runInstallFlow(options = {}) {
   const { skipDoctor = false, assetsPath, requirePython = false } = options;
   if (!skipDoctor) {
@@ -49,12 +70,19 @@ async function runInstallFlow(options = {}) {
   }
   const dirs = ensureStateDirs();
   const createdConfigs = ensureConfigFiles();
+  const bundledWorkflows = ensureBundledWorkflows();
   const manifestPath = assetsPath || resolveAssetsConfigPath();
   const assetsSummary = await ensureAllAssets(manifestPath, stateRoot, { install: true, strict: false });
   if (!assetsSummary.ok) {
     throw new AppError('UNSUPPORTED_FORMAT', 'asset install incomplete', { assets: assetsSummary });
   }
-  return { state_dir: dirs.state_dir, comfy_root: dirs.comfy_root, created_configs: createdConfigs, assets: assetsSummary };
+  return {
+    state_dir: dirs.state_dir,
+    comfy_root: dirs.comfy_root,
+    created_configs: createdConfigs,
+    bundled_workflows: bundledWorkflows,
+    assets: assetsSummary,
+  };
 }
 
 module.exports = { runInstallFlow, ensureStateDirs, ensureConfigFiles };
