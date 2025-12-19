@@ -141,10 +141,35 @@ async function runJob(job, options = {}) {
         prompt: job?.motion?.prompt ?? null,
       };
       try {
-        const response = await comfyuiClient.submitPrompt(payload);
+        const submitResponse = await comfyuiClient.submitPrompt(payload);
+        const promptId = submitResponse?.prompt_id || submitResponse?.id || submitResponse?.promptId || null;
+        if (!promptId) {
+          const err = new AppError('COMFYUI_BAD_RESPONSE', 'ComfyUI prompt_id missing');
+          manifest.recordPhase(paths.manifest, 'comfyui', 'failed', {
+            workflow_id: workflowId,
+            error: err.message,
+            code: err.code,
+          });
+          throw err;
+        }
+        manifest.recordPhase(paths.manifest, 'comfyui', 'running', {
+          workflow_id: workflowId,
+          prompt_id: promptId,
+        });
+        const waitResult = await comfyuiClient.waitForCompletion(promptId, {
+          timeout_total: job?.comfyui?.timeout_total ?? comfyuiClient.timeout,
+          poll_interval_ms: job?.comfyui?.poll_interval_ms || 500,
+        });
+        const collectResult = await comfyuiClient.collectOutputs(
+          promptId,
+          { videoPath: paths.comfyuiOutputVideo, framesDir: paths.framesDir, comfyuiDir: paths.comfyuiDir },
+          { outputs: waitResult?.outputs }
+        );
         manifest.recordPhase(paths.manifest, 'comfyui', 'completed', {
           workflow_id: workflowId,
-          prompt_id: response?.prompt_id ?? null,
+          prompt_id: promptId,
+          output_kind: collectResult.output_kind,
+          output_paths: collectResult.output_paths,
         });
       } catch (err) {
         manifest.recordPhase(paths.manifest, 'comfyui', 'failed', {

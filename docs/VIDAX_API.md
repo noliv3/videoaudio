@@ -33,7 +33,8 @@
 - Ablauf:
   - Job + Paths aus Memory/Disk laden.
   - Overwrite-Regeln: vorhandenes `final.mp4` → `OUTPUT_WRITE_FAILED`; Resume nur erlaubt, wenn Manifest existiert und `final.mp4` fehlt.
-  - `processManager.ensureComfyUI()` sorgt für laufendes ComfyUI + Health `ok`.
+  - `processManager.ensureComfyUI()` wird vor Job-Start ausgeführt; Health/Start-Fehler mappen auf `424` (`COMFYUI_UNAVAILABLE|COMFYUI_TIMEOUT`), interne Fehler auf `500`.
+  - Runner `comfyui`-Phase führt `submit -> wait -> collect` aus und kopiert Outputs nach `workdir/comfyui/output.mp4` oder `workdir/frames/`.
   - Runner `comfyui`-Phase wird mit Kontext `{ comfyuiClient, processManager }` ausgeführt.
 - Antwort `202 Accepted` bei Start, Status landet in Manifest/Logs.
 - Fehler: `404` wenn Job oder Manifest fehlt; `415` bei Audioformatproblemen; `424` bei ComfyUI-Fehlern.

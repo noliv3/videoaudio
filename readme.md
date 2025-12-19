@@ -19,5 +19,6 @@ Spezifikation-first Repository für einen lokalen, skriptbaren Video+Audio-Runne
 - Audio-Dauer wird zur Vorbereitung über `ffprobe` gemessen; Manifest füllt `audio_duration_seconds`, `visual_target_duration_seconds`, `fps` und `target_frames` gemäß Determinismus.
 - Encode-Phase erzeugt ein reales `final.mp4` mit ffmpeg: Audio ist Master, Video wird auf `determinism.fps` als CFR getrimmt und endet spätestens mit Audiolänge (Drift <= 1 Frame). Dummy-Video aus Startbild/-frame, falls ComfyUI keine Frames liefert.
 - VIDAX verlangt einen gesetzten API-Key und liefert strukturierte Fehlermeldungen mit Codes/Retry-Hinweisen gemäß [`docs/ERROR_MODEL.md`](docs/ERROR_MODEL.md).
+- ComfyUI-Phase: Bei gesetztem `workflow_id` wird ein Prompt submitted, der Runner pollt auf Fertigstellung (`timeout_total`, `poll_interval_ms=500`) und übernimmt Outputs nach `workdir/comfyui/output.mp4` oder `workdir/frames/`; fehlende Outputs führen zu `COMFYUI_BAD_RESPONSE`.
 
 Alle Spezifikationen sind normativ; diese README dient nur als Einstieg und Link-Sammlung.

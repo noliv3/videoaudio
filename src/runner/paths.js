@@ -44,14 +44,18 @@ function buildPaths(job, runId) {
   const events = path.join(logsDir, 'events.jsonl');
   const manifest = path.join(base, 'manifest.json');
   const finalName = job.output.final_name || 'final.mp4';
+  const comfyuiDir = path.join(base, 'comfyui');
+  const framesDir = path.join(base, 'frames');
   return {
     runId,
     base,
     logsDir,
     events,
     manifest,
-    comfyuiOutput: path.join(base, 'comfyui', 'output.mp4'),
-    framesDir: path.join(base, 'frames'),
+    comfyuiDir,
+    comfyuiOutput: path.join(comfyuiDir, 'output.mp4'),
+    comfyuiOutputVideo: path.join(comfyuiDir, 'output.mp4'),
+    framesDir,
     tempDir: path.join(base, 'temp'),
     final: path.join(base, finalName),
     job: path.join(base, 'job.json')
