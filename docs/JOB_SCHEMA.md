@@ -25,12 +25,13 @@ Validierungsfehler: fehlende oder doppelte Startquelle, fehlende Audio-Datei, ni
 | Feld | Typ | Pflicht | Standard | Regeln |
 | --- | --- | --- | --- | --- |
 | `pre_seconds` | number | Nein | 0 | Vorlauf vor Audiostart; wirkt vor LipSync und beeinflusst nur die visuelle Zielzeit. |
-| `post_seconds` | number | Nein | 0 | Nachlauf nach Audioende; nur erlaubt, wenn `audio_padding=true`. |
-| `audio_padding` | boolean | Nein | false | Ermöglicht, dass `post_seconds` > 0 gesetzt werden darf. |
+| `post_seconds` | number | Nein | 0 | Nachlauf nach Audioende; aktuell verboten, weil kein Audio-Padding existiert. |
+| `audio_padding` | boolean | Nein | false | Reserviert für künftige Audiopufferung; derzeit ohne Wirkung. |
 
 **Regeln:**
-- `visual_generation_duration = audio_duration + pre_seconds + post_seconds` (siehe [INPUT_ABSTRACTION](./INPUT_ABSTRACTION.md)).
-- Wenn `post_seconds > 0` und `audio_padding` ≠ true → `VALIDATION_ERROR` (Audio bleibt normativer Horizont).
+- `visual_generation_duration = audio_duration + pre_seconds` (siehe [INPUT_ABSTRACTION](./INPUT_ABSTRACTION.md)); `post_seconds` ist derzeit gesperrt.
+- Wenn `pre_seconds` oder `post_seconds` negativ sind → `VALIDATION_ERROR`.
+- Wenn `post_seconds > 0` → `VALIDATION_ERROR`, da Audio-Padding nicht implementiert ist und Audio den Horizont vorgibt.
 - Buffer ändert nie die Audiolänge oder Mux-Dauer; LipSync arbeitet immer auf der ungepaddeten Audioquelle.
 
 ### motion
@@ -88,7 +89,7 @@ LipSync wird nur ausgeführt, wenn `enable=true` **und** `provider` gesetzt ist;
 | `frame_rounding` | string | Nein | "ceil" | Werte: `ceil` oder `round`; regelt Berechnung von `target_frames`. |
 
 **Regeln:**
-- Ziel-Frames: `target_frames = frame_rounding(fps * audio_duration_seconds)`; Empfehlung und Default: `ceil`.
+- Ziel-Frames: `target_frames = frame_rounding(fps * visual_generation_duration)` mit `visual_generation_duration = audio_duration + pre_seconds`; Empfehlung und Default: `ceil`.
 - Video darf nicht länger als Audio sein; maximaler Drift: < 1 Frame; überschüssige Frames werden getrimmt (siehe Output-Vertrag).
 - FPS ist immer CFR (konstant); VFR wird nicht unterstützt.
 

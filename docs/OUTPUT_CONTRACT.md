@@ -26,7 +26,7 @@ workdir/
 - `timestamps` (object: `created`, `started`, `finished` in ISO-8601)
 - `input_hashes` (object: start, audio, end; leer, falls optional fehlt)
 - `audio_duration_seconds` (number)
-- `visual_target_duration_seconds` (number; entspricht `audio_duration_seconds + pre_buffer + post_buffer`)
+- `visual_target_duration_seconds` (number; entspricht `audio_duration_seconds + pre_buffer`)
 - `fps` (number)
 - `target_frames` (integer, nach Rounding-Regel)
 - `effective_params` (object: final angewandte Job-Parameter inkl. Defaults)
@@ -34,7 +34,7 @@ workdir/
 - `seeds` (object: comfyui_seed, lipsync_seed falls relevant)
 - `run_status` (string enum: `queued`, `running`, `completed`, `failed`)
 - `exit_status` (string enum: `success`, `failed`, `partial`, `null`)
-- `buffer_applied` (object: `pre_seconds`, `post_seconds`, `audio_padding` Flag)
+- `buffer_applied` (object: `pre_seconds`, `post_seconds`)
 - `phases.lipsync` dokumentiert Provider, Input/Output-Pfade und Status `queued|running|completed|failed|skipped`; bei Passthrough bleibt `exit_status=success`, `partial_reason` notiert den LipSync-Fehler.
 
 ## Cleanup-, Resume- und Overwrite-Regeln

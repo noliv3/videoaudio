@@ -124,11 +124,16 @@ async function runJob(job, options = {}) {
     manifest.recordPhase(paths.manifest, 'prepare', 'running');
     logger.log({ level: 'info', stage: 'prepare', message: 'preparing inputs' });
     const audioDurationSeconds = getAudioDurationSeconds(job.input?.audio);
+    const preBufferSeconds = job?.buffer?.pre_seconds ?? 0;
+    const postBufferSeconds = job?.buffer?.post_seconds ?? 0;
+    const visualTargetDurationSeconds = audioDurationSeconds + preBufferSeconds;
     const prepareDetails = {
       audioDurationSeconds,
+      visualTargetDurationSeconds,
       fps: job.determinism?.fps ?? null,
       frameRounding: job.determinism?.frame_rounding || 'ceil',
       comfyuiSeed: job.comfyui?.seed ?? null,
+      bufferApplied: { pre_seconds: preBufferSeconds, post_seconds: postBufferSeconds },
       hashes: {
         start: job.input?.start_image || job.input?.start_video || null,
         audio: job.input?.audio || null,

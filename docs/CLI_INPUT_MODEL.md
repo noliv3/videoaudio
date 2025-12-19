@@ -7,8 +7,8 @@ Die CLI sammelt deklarative Eingaben (Quellen + Buffer) und schreibt immer ein n
 - `--audio <path>`: Pflicht. Definiert `audio_source` (Master) und bestimmt `audio_duration`.
 - `--video <path>` oder `--image <path>`: Optional. Setzt `visual_source` mit eigener Origin-Länge.
 - `--buffer <seconds>`: Komfort-Flag, setzt `pre_buffer` auf Sekundenwert (alias `--pre-buffer`).
-- `--pre-buffer <seconds>` / `--post-buffer <seconds>`: Explizite Buffer-Angaben; `post-buffer` wird validiert gegen `audio_padding`.
-- `--audio-padding`: Optionaler Schalter, der die Verwendung von `post_buffer` erlaubt, andernfalls VALIDATION_ERROR.
+- `--pre-buffer <seconds>` / `--post-buffer <seconds>`: Explizite Buffer-Angaben; `post-buffer` schlägt aktuell immer mit VALIDATION_ERROR fehl (Audio-Padding fehlt).
+- `--audio-padding`: Platzhalter für künftige Audiopufferung; aktuell ohne Wirkung.
 
 ## Normalisiertes job.json
 - Enthält Quellen und Buffer-Werte im `buffer`-Block (siehe `docs/JOB_SCHEMA.md`).
@@ -17,5 +17,5 @@ Die CLI sammelt deklarative Eingaben (Quellen + Buffer) und schreibt immer ein n
 
 ## Semantik
 - Audio bleibt Master: `audio_duration` bestimmt den Mux-Horizont.
-- `visual_generation_duration = audio_duration + pre_buffer + post_buffer` (post nur, wenn erlaubt).
+- `visual_generation_duration = audio_duration + pre_buffer`; Post-Buffer wird abgelehnt, solange Audio-Padding fehlt.
 - Buffer wirkt vor der LipSync-Phase; CLI verändert Timing nicht, sondern beschreibt nur die Intention.
