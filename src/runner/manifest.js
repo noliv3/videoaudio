@@ -113,10 +113,12 @@ function recordPrepare(manifestPath, details) {
   return updateManifest(manifestPath, (m) => {
     const audioDuration = details.audioDurationSeconds ?? m.audio_duration_seconds;
     const fps = details.fps ?? m.fps;
-    const targetFrames = computeTargetFrames(audioDuration, fps, details.frameRounding);
+    const bufferApplied = normalizeBuffer(details.bufferApplied, m.buffer_applied);
+    const visualDuration = resolveVisualDuration(details.visualTargetDurationSeconds, audioDuration, bufferApplied);
+    const targetFrames = computeTargetFrames(visualDuration, fps, details.frameRounding);
     m.audio_duration_seconds = audioDuration;
-    m.visual_target_duration_seconds = audioDuration;
-    m.buffer_applied = details.bufferApplied ?? m.buffer_applied ?? null;
+    m.visual_target_duration_seconds = visualDuration;
+    m.buffer_applied = bufferApplied;
     m.fps = fps;
     m.target_frames = targetFrames;
     m.input_hashes = details.hashes || m.input_hashes || {};
@@ -127,9 +129,24 @@ function recordPrepare(manifestPath, details) {
   });
 }
 
-function computeTargetFrames(audioDuration, fps, rounding = 'ceil') {
-  if (audioDuration == null || fps == null) return null;
-  const frames = fps * audioDuration;
+function normalizeBuffer(bufferApplied, current) {
+  const buffer = bufferApplied ?? current ?? { pre_seconds: 0, post_seconds: 0 };
+  return {
+    pre_seconds: buffer.pre_seconds ?? 0,
+    post_seconds: buffer.post_seconds ?? 0,
+  };
+}
+
+function resolveVisualDuration(visualTargetDurationSeconds, audioDuration, bufferApplied) {
+  if (visualTargetDurationSeconds != null) return visualTargetDurationSeconds;
+  if (audioDuration == null) return null;
+  const pre = bufferApplied?.pre_seconds ?? 0;
+  return audioDuration + pre;
+}
+
+function computeTargetFrames(durationSeconds, fps, rounding = 'ceil') {
+  if (durationSeconds == null || fps == null) return null;
+  const frames = fps * durationSeconds;
   if (rounding === 'round') {
     return Math.round(frames);
   }

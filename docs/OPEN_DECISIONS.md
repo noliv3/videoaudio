@@ -19,3 +19,7 @@
 ## Resume Semantik
 - Optionen: striktes Fail bei vorhandenen Outputs vs. Resume, wenn `manifest` vorhanden aber `final.mp4` fehlt.
 - Default-Vorschlag: Resume erlauben, wenn `manifest` existiert und `final.mp4` fehlt; sonst Fail bei Overwrite.
+
+## Audio-Padding und Post-Buffer
+- Status: Audio-Padding nicht implementiert; `post_seconds > 0` führt zu `VALIDATION_ERROR`.
+- Offene Frage: Soll Audio-Padding später als optionaler Schalter eingeführt werden oder bleibt Post-Buffer dauerhaft gesperrt?

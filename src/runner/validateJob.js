@@ -12,6 +12,7 @@ function validateJob(job) {
   }
 
   validateInput(job.input, errors);
+  validateBuffer(job.buffer, errors);
   validateTiming(job, errors);
   validateOutput(job.output, errors);
   validateDeterminism(job.determinism, errors);
@@ -123,6 +124,35 @@ function validateLipsync(lipsync, errors) {
   }
   if (lipsync.enable === false && lipsync.provider) {
     errors.push({ field: 'lipsync.provider', message: 'provider ignored when disabled', code: 'VALIDATION_ERROR' });
+  }
+}
+
+function validateBuffer(buffer, errors) {
+  if (!buffer) return;
+  if (typeof buffer !== 'object') {
+    errors.push({ field: 'buffer', message: 'buffer must be object', code: 'VALIDATION_ERROR' });
+    return;
+  }
+  const pre = buffer.pre_seconds ?? 0;
+  const post = buffer.post_seconds ?? 0;
+  if (buffer.pre_seconds != null && typeof buffer.pre_seconds !== 'number') {
+    errors.push({ field: 'buffer.pre_seconds', message: 'pre_seconds must be number', code: 'VALIDATION_ERROR' });
+  }
+  if (buffer.post_seconds != null && typeof buffer.post_seconds !== 'number') {
+    errors.push({ field: 'buffer.post_seconds', message: 'post_seconds must be number', code: 'VALIDATION_ERROR' });
+  }
+  if (pre < 0) {
+    errors.push({ field: 'buffer.pre_seconds', message: 'pre_seconds cannot be negative', code: 'VALIDATION_ERROR' });
+  }
+  if (post < 0) {
+    errors.push({ field: 'buffer.post_seconds', message: 'post_seconds cannot be negative', code: 'VALIDATION_ERROR' });
+  }
+  if (post > 0) {
+    errors.push({
+      field: 'buffer.post_seconds',
+      message: 'post_seconds requires audio padding, which is not supported',
+      code: 'VALIDATION_ERROR',
+    });
   }
 }
 

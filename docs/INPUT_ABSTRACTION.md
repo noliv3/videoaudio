@@ -7,11 +7,11 @@
 
 ## Zeitachsen
 - **audio_duration:** Tatsächliche Länge der Audiomaster-Quelle; legt den Mux-Horizont fest.
-- **visual_generation_duration:** Zielzeitraum für visuelle Synthese = `audio_duration + pre_buffer + post_buffer`. Keine automatische Audioverlängerung.
+- **visual_generation_duration:** Zielzeitraum für visuelle Synthese = `audio_duration + pre_buffer`; Post-Buffer ist gesperrt, solange kein Audio-Padding existiert.
 
 ## Buffer-Typen
-- **pre_buffer:** Zeitlicher Vorlauf vor `t=0` des Audiomasters; dient Stabilisierung/Vorbereitung. Wirkt vor LipSync.
-- **post_buffer:** Zeitlicher Nachlauf nach Ende des Audiomasters. Default verboten, bis explizites Audio-Padding vorhanden ist.
+- **pre_buffer:** Zeitlicher Vorlauf vor `t=0` des Audiomasters; dient Stabilisierung/Vorbereitung. Wirkt vor LipSync und erweitert nur die visuelle Zielzeit.
+- **post_buffer:** Zeitlicher Nachlauf nach Ende des Audiomasters. Aktuell verboten (VALIDATION_ERROR), weil kein Audio-Padding verfügbar ist.
 
 ## Harte Regeln
 - Audio bleibt Master: **Audio-Mux-Länge = audio_duration**, außer wenn künftig `audio_padding=true` zugelassen wird.
