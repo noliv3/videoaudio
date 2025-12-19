@@ -7,7 +7,7 @@ Alle Felder sind in YAML/JSON darstellbar. Validierung schlägt als `VALIDATION_
 - `input.audio` ist immer erforderlich.
 - Pfade dürfen relativ zum `output.workdir` oder absolut sein; mischen relativer und expliziter Zielpfade ist verboten.
 - Alle Zeitwerte in Sekunden (float) oder Frames (int) müssen die Einheit deklarieren.
-- Seeds, fps und target_frames bestimmen die Reproduzierbarkeit; fehlende Seeds dürfen vom Runner generiert werden und müssen ins Manifest.
+- Seeds, fps und target_frames bestimmen die Reproduzierbarkeit; fehlende Seeds werden vom Runner generiert, im Manifest abgelegt und in `effective_params` gespiegelt.
 
 ## Feldgruppen
 
@@ -63,8 +63,8 @@ LipSync wird nur ausgeführt, wenn `enable=true` **und** `provider` gesetzt ist;
 | --- | --- | --- | --- | --- |
 | `server` | string (URL) | Ja | — | Basis-URL des ComfyUI-Servers. |
 | `workflow_ids` | array[string] | Nein | [] | Liste möglicher Workflow-IDs; erste nutzbare wird gewählt. |
-| `seed_policy` | string | Nein | "fixed" | Werte: `fixed` (verwende bereitgestellten Seed), `random` (generiere per Job), `per_retry` (neuer Seed pro Versuch). |
-| `seed` | integer | Nein | generiert | Nur gültig wenn `seed_policy` ≠ `random` oder explizit übergeben. |
+| `seed_policy` | string | Nein | "fixed" | Werte: `fixed` (verwende bereitgestellten Seed oder generiere einen), `random` (immer generiert, bereitgestellter Seed verboten), `per_retry` (neuer Seed pro Submit-Versuch; aktuell wird der erste Laufseed genutzt, da keine Retry-Schleife aktiv ist). |
+| `seed` | integer | Nein | generiert | Muss Integer im Bereich `0..4294967295` sein; verboten, wenn `seed_policy=random`. |
 | `retries` | integer | Nein | 2 | Max. Wiederholungen bei retryable Fehlern. |
 | `timeout_connect` | integer (ms) | Nein | 5000 | Verbindungstimeout. |
 | `timeout_total` | integer (ms) | Nein | 120000 | Gesamtzeit pro Versuch. |
@@ -98,3 +98,4 @@ LipSync wird nur ausgeführt, wenn `enable=true` **und** `provider` gesetzt ist;
 - Nicht gefundene Dateien → `INPUT_NOT_FOUND`.
 - Nicht unterstützte Formate → `UNSUPPORTED_FORMAT`.
 - Seed-Policy widerspricht bereitgestelltem Seed (z.B. `random` + `seed` gesetzt) → `VALIDATION_ERROR`.
+- Seeds außerhalb `0..4294967295` oder nicht-integer Werte → `VALIDATION_ERROR`.

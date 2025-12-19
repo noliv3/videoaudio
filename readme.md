@@ -13,8 +13,8 @@ Skriptbarer Video+Audio-Runner: Job laden, validieren, optional über VIDAX star
 ## Features
 ### Implemented (Code)
 - CLI-Kommandos `validate`, `run`, `status`, `logs` mit Exit-Codes aus `src/errors.js`; `run` kennt `--workdir` und `--resume`.
-- Manifest + Registry: Runs werden unter `~/.va/runs.json` registriert; `manifest.json` hält `run_status`/`exit_status`, Phasen, Seeds, Audio/FPS/Target-Frames sowie Buffer- und Zielzeitfelder.
-- Prepare: Audio-Dauer via `ffprobe`, Buffer `pre_seconds` erweitert die visuelle Zielzeit (`visual_target_duration_seconds`) und die ComfyUI-Ziel-Frames; `post_seconds` wird ohne Audio-Padding als VALIDATION_ERROR abgelehnt; Input-Pfade und Seeds werden protokolliert.
+- Manifest + Registry: Runs werden unter `~/.va/runs.json` registriert; `manifest.json` hält `run_status`/`exit_status`, Phasen, Seeds (inkl. Policy), Audio/FPS/Target-Frames sowie Buffer- und Zielzeitfelder.
+- Prepare: Audio-Dauer via `ffprobe`, Buffer `pre_seconds` erweitert die visuelle Zielzeit (`visual_target_duration_seconds`) und die ComfyUI-Ziel-Frames; `post_seconds` wird ohne Audio-Padding als VALIDATION_ERROR abgelehnt; Input-Hashes sind echte SHA-256-Werte oder `INPUT_NOT_FOUND`; ComfyUI-Seed wird gemäß `seed_policy` (fixed/random/per_retry) validiert/generiert, im Manifest und `effective_params` abgelegt und an ComfyUI weitergereicht.
 - ComfyUI: Nur wenn `comfyui.workflow_ids[0]` gesetzt und Client verfügbar → `submit → wait (poll_interval_ms default 500) → collect` nach `workdir/comfyui/output.mp4` oder `workdir/frames/`; sonst Phase `skipped`.
 - LipSync: Läuft nur bei `lipsync.enable` (default true) **und** vorhandenem Provider in `config/lipsync.providers.json`; Output `workdir/lipsync/output.mp4`; `allow_passthrough=true` erlaubt Encode trotz Fehler.
 - Encode: Reales ffmpeg-Muxing (CFR auf `determinism.fps`) mit Audio als Master, Trim auf Audiolänge, Dummy-Video aus Startbild/-frame falls keine ComfyUI-Frames/Videos.
@@ -24,7 +24,7 @@ Skriptbarer Video+Audio-Runner: Job laden, validieren, optional über VIDAX star
 
 ### Planned / Not in Code
 - Motion-Stärkeregler, Timing-Files aus den Specs werden nicht validiert oder angewendet.
-- Retry-/Backoff-Policy für ComfyUI, Stabilize-Phase, Seed-Policies jenseits fester Seeds, sowie Seed-Generierung fehlen.
+- Retry-/Backoff-Policy für ComfyUI, Stabilize-Phase und echte per-retry Seed-Rotation (weitere Submit-Versuche) fehlen.
 - Manifest-Erweiterungen wie `runner.log` Alternative und Cleanup-Regeln sind nicht implementiert.
 - VIDAX-Fehlercodes für spezifische Startfehler (z.B. `COMFYUI_START_FAILED`) und API-gesteuerte Partial/Resume-Semantik sind nicht vorhanden.
 

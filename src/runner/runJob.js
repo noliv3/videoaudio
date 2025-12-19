@@ -9,6 +9,8 @@ const { getAudioDurationSeconds } = require('./audio');
 const { getFfmpegVersion, muxAudioVideo, createStillVideo, extractFirstFrame } = require('./ffmpeg');
 const { runLipSync } = require('./lipsync');
 const { AppError } = require('../errors');
+const { hashFileSha256 } = require('./hash');
+const { generateSeed, normalizeSeed } = require('./seeds');
 
 function ensureOutputRules(paths, resume) {
   const manifestExists = fs.existsSync(paths.manifest);
@@ -91,6 +93,55 @@ function prepareLipsyncInput(videoSource, job, paths, audioDurationSeconds, fps,
   return target;
 }
 
+async function hashOrMissing(filePath) {
+  if (!filePath) return null;
+  if (!fs.existsSync(filePath)) {
+    return 'INPUT_NOT_FOUND';
+  }
+  try {
+    return await hashFileSha256(filePath);
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      return 'INPUT_NOT_FOUND';
+    }
+    throw err;
+  }
+}
+
+async function computeInputHashes(job) {
+  const startPath = job.input?.start_image || job.input?.start_video || null;
+  const [start, audio, end] = await Promise.all([
+    hashOrMissing(startPath),
+    hashOrMissing(job.input?.audio || null),
+    hashOrMissing(job.input?.end_image || null),
+  ]);
+  return { start, audio, end };
+}
+
+function resolveComfyuiSeed(job, existingManifest) {
+  const manifestSeed = existingManifest?.seeds?.comfyui_seed;
+  const manifestPolicy = existingManifest?.seeds?.comfyui_seed_policy;
+  const policy = manifestPolicy || job?.comfyui?.seed_policy || 'fixed';
+  if (manifestSeed != null) {
+    return { seed: manifestSeed, policy };
+  }
+  const providedSeed = job?.comfyui?.seed;
+  if (policy === 'random') {
+    return { seed: generateSeed(), policy };
+  }
+  const normalized = providedSeed != null ? normalizeSeed(providedSeed) : generateSeed();
+  return { seed: normalized, policy };
+}
+
+function applyEffectiveSeed(job, comfyuiSeed, policy) {
+  const comfyui = Object.assign({}, job.comfyui || {});
+  comfyui.seed = comfyuiSeed;
+  if (policy) {
+    comfyui.seed_policy = policy;
+  }
+  return Object.assign({}, job, { comfyui });
+}
+
 async function runJob(job, options = {}) {
   const validation = validateJob(job);
   if (!validation.valid) {
@@ -123,6 +174,9 @@ async function runJob(job, options = {}) {
     manifest.markStarted(paths.manifest);
     manifest.recordPhase(paths.manifest, 'prepare', 'running');
     logger.log({ level: 'info', stage: 'prepare', message: 'preparing inputs' });
+    const comfyuiSeedInfo = resolveComfyuiSeed(job, existingManifest);
+    const effectiveJob = applyEffectiveSeed(job, comfyuiSeedInfo.seed, comfyuiSeedInfo.policy);
+    const inputHashes = await computeInputHashes(effectiveJob);
     const audioDurationSeconds = getAudioDurationSeconds(job.input?.audio);
     const preBufferSeconds = job?.buffer?.pre_seconds ?? 0;
     const postBufferSeconds = job?.buffer?.post_seconds ?? 0;
@@ -132,13 +186,11 @@ async function runJob(job, options = {}) {
       visualTargetDurationSeconds,
       fps: job.determinism?.fps ?? null,
       frameRounding: job.determinism?.frame_rounding || 'ceil',
-      comfyuiSeed: job.comfyui?.seed ?? null,
+      comfyuiSeed: comfyuiSeedInfo.seed,
+      comfyuiSeedPolicy: comfyuiSeedInfo.policy,
       bufferApplied: { pre_seconds: preBufferSeconds, post_seconds: postBufferSeconds },
-      hashes: {
-        start: job.input?.start_image || job.input?.start_video || null,
-        audio: job.input?.audio || null,
-        end: job.input?.end_image || null,
-      },
+      hashes: inputHashes,
+      effectiveParams: effectiveJob,
     };
     manifest.recordPrepare(paths.manifest, prepareDetails);
     manifest.recordPhase(paths.manifest, 'prepare', 'completed');
