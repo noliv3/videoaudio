@@ -15,6 +15,7 @@ Scope: Repository root and all subdirectories.
 - The specification is normative; `README.md` is only an entry point and must stay concise.
 - All open decisions must be captured in `docs/OPEN_DECISIONS.md`.
 - Runner now misst Audiolänge via `ffprobe`, erzwingt Resume/Overwrite-Regeln **und** führt einen echten ffmpeg-Encode aus (CFR nach `determinism.fps`, Video <= Audio, Dummy-Video falls keine ComfyUI-Frames). Manifest-/Output-Regeln entsprechend angleichen.
+- LipSync läuft real, sobald `lipsync.enable=true` und ein Provider aus `config/lipsync.providers.json` aufgelöst werden kann; Output unter `workdir/lipsync/output.mp4`, Passthrough (`allow_passthrough=true`) hält den Encode bei Providerfehlern am Leben.
 
 ## Style & Content
 - Use deterministic terminology: surface required parameters (fps, seed, resolution, target_frames) and emphasize audio-driven timing.

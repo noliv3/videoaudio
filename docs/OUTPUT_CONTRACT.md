@@ -16,6 +16,8 @@ workdir/
     runner.log (optional, wenn events.jsonl fehlt)
     events.jsonl (optional, wenn runner.log fehlt)
   frames/ (optional, wenn ComfyUI Frame-Sequenz liefert)
+  lipsync/
+    output.mp4 (nur wenn LipSync erfolgreich lief)
   temp/   (optional, interne Zwischenschritte; wird bereinigt)
 ```
 
@@ -33,6 +35,7 @@ workdir/
 - `run_status` (string enum: `queued`, `running`, `completed`, `failed`)
 - `exit_status` (string enum: `success`, `failed`, `partial`, `null`)
 - `buffer_applied` (object: `pre_seconds`, `post_seconds`, `audio_padding` Flag)
+- `phases.lipsync` dokumentiert Provider, Input/Output-Pfade und Status `queued|running|completed|failed|skipped`; bei Passthrough bleibt `exit_status=success`, `partial_reason` notiert den LipSync-Fehler.
 
 ## Cleanup-, Resume- und Overwrite-Regeln
 - `workdir` muss erzeugt oder geleert werden können; fehlende Schreibrechte → `OUTPUT_WRITE_FAILED`.

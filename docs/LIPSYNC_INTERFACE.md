@@ -1,24 +1,26 @@
 # LipSync Interface
 
-## Provider-Vertrag
-- `provider`: string-Name laut Registry; muss eindeutig sein.
-- `provider_cli`: CLI-Binary oder Command-Template (z.B. `"autosync --audio {audio} --video {video}"`).
-- `params`: freies Objekt; wird unverändert an den Provider übergeben.
+## Provider-Registry
+- Konfiguration via `config/lipsync.providers.json` (Mapping `provider -> { command, args_template[] }`).
+- `args_template` darf `{audio}`, `{video}`, `{out}` enthalten; zusätzliche `params` werden als `--key=value` (primitive Werte) angehängt.
+- Fehlender oder unbekannter Provider → `VALIDATION_ERROR`.
 
 ## Standardisierte Inputs
-- Video/Frames: CFR-Video oder Frame-Ordner unter `workdir/frames`.
-- Audio: identisch zum Audio-Master des Jobs.
-- Timing/FPS: muss zur Videoquelle passen (fps aus `determinism.fps`).
+- Videoquelle: bevorzugt `workdir/comfyui/output.mp4`, sonst temporäres `workdir/temp/pre_lipsync.mp4` (aus Frames/Dummy gerendert).
+- Audio: immer `job.input.audio` (Audiomaster, identische Dauer).
+- FPS: `determinism.fps`; Video darf Audio nicht überdauern.
 
 ## Erwartete Outputs
-- Lipsync-Video (CFR) mit identischer Dauer wie Audio (max. Drift < 1 Frame).
-- Optional: Qualitätsflags `confidence` (0..1) und `viseme_coverage` zur Manifest-Aufnahme.
+- `workdir/lipsync/output.mp4` (CFR, Dauer ≤ Audio, Drift < 1 Frame).
+- Manifest ergänzt Providername, Input/Output-Pfade und Status `queued|running|completed|failed|skipped`.
 
-## Exit-Code-Regeln
-- `0`: Erfolg; Output-Video geschrieben.
-- `>0`: Fehler → `LIPSYNC_FAILED`; stdout/stderr werden in Logs aufgenommen.
+## Laufzeit & Logging
+- Aufruf erfolgt via `child_process.spawn` mit Provider-CLI laut Registry.
+- STDOUT/STDERR werden als Events protokolliert (pro Event max. ~5k Zeichen, gekürzt markiert).
+- Exit-Code ≠ 0 → `LIPSYNC_FAILED`.
 
-## Fallback-Verhalten
-- Wenn `lipsync.enable=false`: Eingabevideo wird unverändert in den Encode-Schritt gegeben; Manifest markiert `lipsync_skipped=true`.
-- Bei Fehler und Retryable-Provider: Wiederholung gemäß Retry-Policy; nach Ausschöpfung gilt `LIPSYNC_FAILED`.
-- Bei dauerhaftem Fehlschlag kann optional der unstabilisierte Videopfad verwendet werden, wenn `params.allow_passthrough=true` gesetzt ist; sonst Abbruch.
+## Fallback-Regeln
+- `lipsync.enable=false` oder fehlender Provider → Phase `skipped`, Encode nutzt ursprüngliche Videoquelle.
+- Providerfehler:
+  - `params.allow_passthrough=true`: Phase `failed`, Encode läuft mit ursprünglicher Quelle weiter, `exit_status=success`, Manifest führt den Fehler und den Passthrough-Hinweis.
+  - sonst: `exit_status=failed`.

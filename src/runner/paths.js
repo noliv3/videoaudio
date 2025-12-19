@@ -45,7 +45,9 @@ function buildPaths(job, runId) {
   const manifest = path.join(base, 'manifest.json');
   const finalName = job.output.final_name || 'final.mp4';
   const comfyuiDir = path.join(base, 'comfyui');
+  const lipsyncDir = path.join(base, 'lipsync');
   const framesDir = path.join(base, 'frames');
+  const tempDir = path.join(base, 'temp');
   return {
     runId,
     base,
@@ -55,8 +57,11 @@ function buildPaths(job, runId) {
     comfyuiDir,
     comfyuiOutput: path.join(comfyuiDir, 'output.mp4'),
     comfyuiOutputVideo: path.join(comfyuiDir, 'output.mp4'),
+    lipsyncDir,
+    lipsyncOutputVideo: path.join(lipsyncDir, 'output.mp4'),
     framesDir,
-    tempDir: path.join(base, 'temp'),
+    tempDir,
+    preLipsyncVideo: path.join(tempDir, 'pre_lipsync.mp4'),
     final: path.join(base, finalName),
     job: path.join(base, 'job.json')
   };

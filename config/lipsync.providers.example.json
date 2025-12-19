@@ -1,0 +1,10 @@
+{
+  "demo": {
+    "command": "lipsync-cli",
+    "args_template": [
+      "--audio={audio}",
+      "--video={video}",
+      "--out={out}"
+    ]
+  }
+}
