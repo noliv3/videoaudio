@@ -23,3 +23,6 @@
 ## Audio-Padding und Post-Buffer
 - Status: Audio-Padding umgesetzt (Stille für `pre_seconds`/`post_seconds`), Video klont letzte Frames für Post-Puffer.
 - Offene Frage: Endbilder (`end_image`) werden aktuell nur als Input-Hash erfasst; explizite Conditioning/Transitions fehlen.
+
+## Endbilder
+- Stand: Endbild wird als Post-Puffer-Hold benutzt, wenn `post_seconds>0`; es gibt keine Crossfade-Option und keinen Hold ohne Post-Puffer.

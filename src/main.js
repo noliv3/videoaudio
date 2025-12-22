@@ -104,12 +104,16 @@ yargs(hideBin(process.argv))
         .option('neg', { type: 'string', describe: 'negative prompt' })
         .option('width', { type: 'number', describe: 'render width' })
         .option('height', { type: 'number', describe: 'render height' })
+        .option('max_width', { type: 'number', default: 854, describe: 'max render width clamp' })
+        .option('max_height', { type: 'number', default: 480, describe: 'max render height clamp' })
         .option('seed_policy', { choices: ['fixed', 'random'], default: 'fixed' })
         .option('seed', { type: 'number', describe: 'seed (when allowed by policy)' })
-        .option('lipsync', { choices: ['on', 'off'], default: 'on' })
+        .option('lipsync', { choices: ['on', 'off'], default: 'off' })
         .option('lipsync_provider', { type: 'string', describe: 'lip sync provider id' })
         .option('workdir', { type: 'string', describe: 'output workdir' })
-        .option('comfyui_url', { type: 'string', describe: 'ComfyUI server URL' }),
+        .option('comfyui_url', { type: 'string', describe: 'ComfyUI server URL' })
+        .option('no-comfyui', { type: 'boolean', default: false, describe: 'disable comfyui (diagnostic only)' })
+        .option('comfyui_chunk_size', { type: 'number', describe: 'frames per comfyui chunk' }),
     async (args) => {
       try {
         const job = buildProduceJob(
@@ -124,12 +128,16 @@ yargs(hideBin(process.argv))
             negative: args.neg,
             width: args.width,
             height: args.height,
+            max_width: args.max_width,
+            max_height: args.max_height,
             seed_policy: args.seed_policy,
             seed: args.seed,
             lipsync: args.lipsync === 'on' ? true : 'off',
             lipsync_provider: args.lipsync_provider,
             workdir: args.workdir,
             comfyui_url: args.comfyui_url,
+            no_comfyui: args['no-comfyui'],
+            comfyui_chunk_size: args.comfyui_chunk_size,
           },
           {}
         );

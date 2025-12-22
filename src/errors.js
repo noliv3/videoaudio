@@ -16,6 +16,7 @@ function mapErrorToExitCode(code) {
       return 20;
     case 'COMFYUI_TIMEOUT':
     case 'COMFYUI_BAD_RESPONSE':
+    case 'COMFYUI_UNAVAILABLE':
       return 30;
     case 'LIPSYNC_FAILED':
       return 40;

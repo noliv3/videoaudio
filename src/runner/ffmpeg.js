@@ -24,7 +24,17 @@ function ensureFfmpeg(result, context) {
   }
 }
 
-function muxAudioVideo({ videoInput, audioInput, fps, outPath, maxDurationSeconds, isImageSequence = false, holdSeconds = 0 }) {
+function muxAudioVideo({
+  videoInput,
+  audioInput,
+  fps,
+  outPath,
+  maxDurationSeconds,
+  isImageSequence = false,
+  holdSeconds = 0,
+  targetWidth,
+  targetHeight,
+}) {
   if (!videoInput || !audioInput || !fps || !outPath || !maxDurationSeconds) {
     throw new AppError('FFMPEG_FAILED', 'muxAudioVideo missing required parameters', {
       videoInput,
@@ -37,7 +47,11 @@ function muxAudioVideo({ videoInput, audioInput, fps, outPath, maxDurationSecond
   const frameMargin = 1 / fps;
   const trimTarget = Math.max(0, maxDurationSeconds - frameMargin);
   const durationCap = trimTarget > 0 ? trimTarget : maxDurationSeconds;
-  const filters = [`fps=${fps}`];
+  const filters = [];
+  if (targetWidth && targetHeight) {
+    filters.push(`scale=${targetWidth}:${targetHeight}:flags=lanczos`);
+  }
+  filters.push(`fps=${fps}`);
   if (holdSeconds && holdSeconds > 0) {
     filters.push(`tpad=stop_mode=clone:stop_duration=${holdSeconds}`);
   }
@@ -56,10 +70,20 @@ function muxAudioVideo({ videoInput, audioInput, fps, outPath, maxDurationSecond
   return outPath;
 }
 
-function createStillVideo({ imagePath, fps, durationSeconds, outPath }) {
+function createStillVideo({ imagePath, fps, durationSeconds, outPath, targetWidth, targetHeight }) {
   if (!imagePath || !fps || !durationSeconds || !outPath) {
-    throw new AppError('FFMPEG_FAILED', 'createStillVideo missing parameters', { imagePath, fps, durationSeconds, outPath });
+    throw new AppError('FFMPEG_FAILED', 'createStillVideo missing parameters', {
+      imagePath,
+      fps,
+      durationSeconds,
+      outPath,
+    });
   }
+  const filters = [];
+  if (targetWidth && targetHeight) {
+    filters.push(`scale=${targetWidth}:${targetHeight}:flags=lanczos`);
+  }
+  filters.push('format=yuv420p', `fps=${fps}`);
   const args = [
     '-y',
     '-loop',
@@ -69,7 +93,7 @@ function createStillVideo({ imagePath, fps, durationSeconds, outPath }) {
     '-t',
     String(durationSeconds),
     '-vf',
-    `fps=${fps},format=yuv420p`,
+    filters.join(','),
     '-c:v',
     'libx264',
     '-pix_fmt',
@@ -122,4 +146,56 @@ function extractFirstFrame({ videoInput, outPath }) {
   return outPath;
 }
 
-module.exports = { getFfmpegVersion, muxAudioVideo, createStillVideo, extractFirstFrame, padAudio };
+function createVideoFromFrames({ framesPattern, fps, outPath, targetWidth, targetHeight }) {
+  if (!framesPattern || !fps || !outPath) {
+    throw new AppError('FFMPEG_FAILED', 'createVideoFromFrames missing parameters', { framesPattern, fps, outPath });
+  }
+  const useGlob = framesPattern.includes('*');
+  const filters = [];
+  if (targetWidth && targetHeight) {
+    filters.push(`scale=${targetWidth}:${targetHeight}:flags=lanczos`);
+  }
+  const filterArgs = filters.length ? ['-vf', filters.join(',')] : [];
+  const args = [
+    '-y',
+    '-framerate',
+    String(fps),
+    ...(useGlob ? ['-pattern_type', 'glob'] : []),
+    '-i',
+    framesPattern,
+    ...filterArgs,
+    '-c:v',
+    'libx264',
+    '-pix_fmt',
+    'yuv420p',
+    '-r',
+    String(fps),
+    '-movflags',
+    '+faststart',
+    outPath,
+  ];
+  const result = spawnSync('ffmpeg', args, { encoding: 'utf-8' });
+  ensureFfmpeg(result, 'frames_to_video');
+  if (!fs.existsSync(outPath)) {
+    throw new AppError('FFMPEG_FAILED', 'failed to render frames video', { outPath });
+  }
+  return outPath;
+}
+
+function concatVideos(videoPaths, outPath) {
+  if (!Array.isArray(videoPaths) || videoPaths.length === 0 || !outPath) {
+    throw new AppError('FFMPEG_FAILED', 'concatVideos missing parameters', { videoPaths, outPath });
+  }
+  const listPath = `${outPath}.txt`;
+  const content = videoPaths.map((p) => `file '${p.replace(/'/g, "'\''")}'`).join('\n');
+  fs.writeFileSync(listPath, content, 'utf-8');
+  const args = ['-y', '-f', 'concat', '-safe', '0', '-i', listPath, '-c', 'copy', outPath];
+  const result = spawnSync('ffmpeg', args, { encoding: 'utf-8' });
+  ensureFfmpeg(result, 'concat');
+  if (!fs.existsSync(outPath)) {
+    throw new AppError('FFMPEG_FAILED', 'concat output missing', { outPath });
+  }
+  return outPath;
+}
+
+module.exports = { getFfmpegVersion, muxAudioVideo, createStillVideo, extractFirstFrame, padAudio, createVideoFromFrames, concatVideos };
