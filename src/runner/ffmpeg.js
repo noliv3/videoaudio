@@ -24,7 +24,7 @@ function ensureFfmpeg(result, context) {
   }
 }
 
-function muxAudioVideo({ videoInput, audioInput, fps, outPath, maxDurationSeconds, isImageSequence = false }) {
+function muxAudioVideo({ videoInput, audioInput, fps, outPath, maxDurationSeconds, isImageSequence = false, holdSeconds = 0 }) {
   if (!videoInput || !audioInput || !fps || !outPath || !maxDurationSeconds) {
     throw new AppError('FFMPEG_FAILED', 'muxAudioVideo missing required parameters', {
       videoInput,
@@ -37,7 +37,11 @@ function muxAudioVideo({ videoInput, audioInput, fps, outPath, maxDurationSecond
   const frameMargin = 1 / fps;
   const trimTarget = Math.max(0, maxDurationSeconds - frameMargin);
   const durationCap = trimTarget > 0 ? trimTarget : maxDurationSeconds;
-  const filters = [`fps=${fps}`, `trim=0:${durationCap}`, 'setpts=PTS-STARTPTS'];
+  const filters = [`fps=${fps}`];
+  if (holdSeconds && holdSeconds > 0) {
+    filters.push(`tpad=stop_mode=clone:stop_duration=${holdSeconds}`);
+  }
+  filters.push(`trim=0:${durationCap}`, 'setpts=PTS-STARTPTS');
   const args = ['-y'];
   if (isImageSequence) {
     args.push('-framerate', String(fps));
@@ -82,6 +86,29 @@ function createStillVideo({ imagePath, fps, durationSeconds, outPath }) {
   return outPath;
 }
 
+function padAudio({ audioInput, preSeconds = 0, postSeconds = 0, targetDurationSeconds, outPath }) {
+  if (!audioInput || !outPath) {
+    throw new AppError('FFMPEG_FAILED', 'padAudio missing parameters', { audioInput, outPath });
+  }
+  if ((preSeconds ?? 0) <= 0 && (postSeconds ?? 0) <= 0) {
+    return audioInput;
+  }
+  const duration = targetDurationSeconds ? String(targetDurationSeconds) : null;
+  const delayMs = Math.max(0, Math.round((preSeconds || 0) * 1000));
+  const filters = [`adelay=${delayMs}|${delayMs}`, 'apad'];
+  const args = ['-y', '-i', audioInput, '-filter_complex', `[0:a]${filters.join(',')}[a]`, '-map', '[a]', '-c:a', 'aac'];
+  if (duration) {
+    args.push('-t', duration);
+  }
+  args.push(outPath);
+  const result = spawnSync('ffmpeg', args, { encoding: 'utf-8' });
+  ensureFfmpeg(result, 'audio_pad');
+  if (!fs.existsSync(outPath)) {
+    throw new AppError('FFMPEG_FAILED', 'padded audio not produced', { outPath });
+  }
+  return outPath;
+}
+
 function extractFirstFrame({ videoInput, outPath }) {
   if (!videoInput || !outPath) {
     throw new AppError('FFMPEG_FAILED', 'extractFirstFrame missing parameters', { videoInput, outPath });
@@ -95,4 +122,4 @@ function extractFirstFrame({ videoInput, outPath }) {
   return outPath;
 }
 
-module.exports = { getFfmpegVersion, muxAudioVideo, createStillVideo, extractFirstFrame };
+module.exports = { getFfmpegVersion, muxAudioVideo, createStillVideo, extractFirstFrame, padAudio };

@@ -21,5 +21,5 @@
 - Default-Vorschlag: Resume erlauben, wenn `manifest` existiert und `final.mp4` fehlt; sonst Fail bei Overwrite.
 
 ## Audio-Padding und Post-Buffer
-- Status: Audio-Padding nicht implementiert; `post_seconds > 0` führt zu `VALIDATION_ERROR`.
-- Offene Frage: Soll Audio-Padding später als optionaler Schalter eingeführt werden oder bleibt Post-Buffer dauerhaft gesperrt?
+- Status: Audio-Padding umgesetzt (Stille für `pre_seconds`/`post_seconds`), Video klont letzte Frames für Post-Puffer.
+- Offene Frage: Endbilder (`end_image`) werden aktuell nur als Input-Hash erfasst; explizite Conditioning/Transitions fehlen.

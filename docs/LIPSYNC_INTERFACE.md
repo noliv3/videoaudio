@@ -7,11 +7,11 @@
 
 ## Standardisierte Inputs
 - Videoquelle: bevorzugt `workdir/comfyui/output.mp4`, sonst temporäres `workdir/temp/pre_lipsync.mp4` (aus Frames/Dummy gerendert).
-- Audio: immer `job.input.audio` (Audiomaster, identische Dauer).
-- FPS: `determinism.fps`; Video darf Audio nicht überdauern.
+- Audio: gepaddete Audioquelle (Audiomaster inkl. Buffer); identische Dauer wie gewünschter Encode-Horizont.
+- FPS: `determinism.fps`; Video soll den gepaddeten Audiohorizont treffen (Frame-Hold ergänzt fehlende Frames).
 
 ## Erwartete Outputs
-- `workdir/lipsync/output.mp4` (CFR, Dauer ≤ Audio, Drift < 1 Frame).
+- `workdir/lipsync/output.mp4` (CFR, Dauer = gepaddete Audiodauer, Drift < 1 Frame).
 - Manifest ergänzt Providername, Input/Output-Pfade und Status `queued|running|completed|failed|skipped`.
 
 ## Laufzeit & Logging

@@ -62,6 +62,7 @@ function buildPaths(job, runId) {
     lipsyncOutputVideo: path.join(lipsyncDir, 'output.mp4'),
     framesDir,
     tempDir,
+    paddedAudio: path.join(tempDir, 'padded_audio.m4a'),
     preLipsyncVideo: path.join(tempDir, 'pre_lipsync.mp4'),
     final: path.join(base, finalName),
     job: path.join(base, 'job.json')

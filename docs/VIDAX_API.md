@@ -30,6 +30,13 @@
 - Antwort `202 Accepted` mit `{ok:true,status:"ready",url:"..."}`.
 - Fehler: `500` mit Fehlercode `COMFYUI_TIMEOUT|COMFYUI_START_FAILED`.
 
+### POST /produce
+- Body: vereinfachte Produktions-Payload analog zur CLI (`audio`, `start`, optional `end`, `pre`, `post`, `fps`, `prompt`, `neg`, `width`, `height`, `seed_policy|seed`, `lipsync`/`lipsync_provider` (Provider Pflicht, wenn LipSync aktiv), optional `workdir`, `comfyui_url`).
+- Workdir: falls nicht gesetzt → `~/.va/state/runs/<run_id>`, `final_name=fertig.mp4`.
+- Aktionen: Payload → Job-Build → `runJob` (inkl. Manifest/Logs im Workdir) mit sofortigem Start.
+- Antwort `202 Accepted` mit `{run_id,status,manifest,workdir}`.
+- Fehler: `400` bei `VALIDATION_ERROR`, `401/403` bei Auth-Fehlern, `424` bei ComfyUI/LipSync-Fehlern, `415` bei Audioformatproblemen.
+
 ### POST /jobs
 - Body: vollständiges Job-JSON laut `JOB_SCHEMA`.
 - Aktionen: Validierung, `run_id` erzeugen, Workdir + `manifest.json` + `logs/events.jsonl` anlegen, Status `queued`.
@@ -44,7 +51,7 @@
 - Ablauf:
   - Job + Paths aus Memory/Disk laden.
   - Overwrite-Regeln: vorhandenes `final.mp4` → `OUTPUT_WRITE_FAILED`; Resume nur erlaubt, wenn Manifest existiert und `final.mp4` fehlt.
-  - `processManager.ensureComfyUI()` wird vor Job-Start ausgeführt; fehlt ein Asset aus dem Manifest → `INPUT_NOT_FOUND`/`UNSUPPORTED_FORMAT`; Health/Start-Fehler mappen auf `424` (`COMFYUI_UNAVAILABLE|COMFYUI_TIMEOUT`), interne Fehler auf `500`.
+  - `processManager.ensureComfyUI()` prüft zunächst die laufende Instanz; wenn Health `ok` ist, blockieren fehlende Assets nicht. Beim Auto-Start gelten Manifest-Assets als Pflicht (`INPUT_NOT_FOUND`/`UNSUPPORTED_FORMAT` bei Download/Hash-Problemen); Health/Start-Fehler mappen auf `424` (`COMFYUI_UNAVAILABLE|COMFYUI_TIMEOUT`), interne Fehler auf `500`.
   - Runner `comfyui`-Phase führt `submit -> wait -> collect` aus und kopiert Outputs nach `workdir/comfyui/output.mp4` oder `workdir/frames/`.
   - Runner `comfyui`-Phase wird mit Kontext `{ comfyuiClient, processManager }` ausgeführt.
 - Antwort `202 Accepted` bei Start, Status landet in Manifest/Logs.
@@ -68,4 +75,4 @@
 - Ergebnis-Status: `exit_status` mit `success|failed|partial|null` (kein `queued|running`).
 - Phasen (prepare, comfyui, stabilize, lipsync, encode) werden im Manifest mit `queued|running|skipped|completed|failed` markiert.
 - LipSync läuft real, wenn `lipsync.enable=true` und ein Provider aus `config/lipsync.providers.json` verfügbar ist; Output liegt unter `workdir/lipsync/output.mp4`, bei `allow_passthrough=true` kann `exit_status=success` bleiben obwohl die Phase `failed` ist.
-- `final.mp4` ist ein Platzhalter; echte Generierung folgt in Stufe 2. Resume setzt `exit_status=partial` und lässt `final.mp4` unüberschrieben, bis echtes Encoding vorhanden ist.
+- `final.mp4`/`fertig.mp4` wird mit gepaddeter Audio-Timeline (Buffer als Stille + Post-Frame-Hold) encodiert; Drift < 1 Frame. Resume setzt `exit_status=partial`, solange kein Final existiert.

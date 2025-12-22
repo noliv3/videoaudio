@@ -128,6 +128,9 @@ function validateLipsync(lipsync, errors) {
     errors.push({ field: 'lipsync', message: 'lipsync must be object', code: 'VALIDATION_ERROR' });
     return;
   }
+  if (lipsync.enable !== false && !lipsync.provider) {
+    errors.push({ field: 'lipsync.provider', message: 'provider required when lipsync is enabled', code: 'VALIDATION_ERROR' });
+  }
   if (lipsync.enable === false && lipsync.provider) {
     errors.push({ field: 'lipsync.provider', message: 'provider ignored when disabled', code: 'VALIDATION_ERROR' });
   }
@@ -147,18 +150,14 @@ function validateBuffer(buffer, errors) {
   if (buffer.post_seconds != null && typeof buffer.post_seconds !== 'number') {
     errors.push({ field: 'buffer.post_seconds', message: 'post_seconds must be number', code: 'VALIDATION_ERROR' });
   }
+  if (buffer.audio_padding != null && typeof buffer.audio_padding !== 'boolean') {
+    errors.push({ field: 'buffer.audio_padding', message: 'audio_padding must be boolean', code: 'VALIDATION_ERROR' });
+  }
   if (pre < 0) {
     errors.push({ field: 'buffer.pre_seconds', message: 'pre_seconds cannot be negative', code: 'VALIDATION_ERROR' });
   }
   if (post < 0) {
     errors.push({ field: 'buffer.post_seconds', message: 'post_seconds cannot be negative', code: 'VALIDATION_ERROR' });
-  }
-  if (post > 0) {
-    errors.push({
-      field: 'buffer.post_seconds',
-      message: 'post_seconds requires audio padding, which is not supported',
-      code: 'VALIDATION_ERROR',
-    });
   }
 }
 
