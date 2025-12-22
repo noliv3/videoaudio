@@ -6,7 +6,7 @@ const { buildPaths, prepareWorkdir, registerRun } = require('./paths');
 const RunnerLogger = require('./logger');
 const manifest = require('./manifest');
 const { getAudioDurationSeconds } = require('./audio');
-const { getFfmpegVersion, muxAudioVideo, createStillVideo, extractFirstFrame } = require('./ffmpeg');
+const { getFfmpegVersion, muxAudioVideo, createStillVideo, extractFirstFrame, padAudio } = require('./ffmpeg');
 const { runLipSync } = require('./lipsync');
 const { AppError } = require('../errors');
 const { hashFileSha256 } = require('./hash');
@@ -39,7 +39,7 @@ function ensureTempDir(tempDir) {
   fs.mkdirSync(tempDir, { recursive: true });
 }
 
-function selectVideoSource(job, paths, audioDurationSeconds, fps, logger) {
+function selectVideoSource(job, paths, visualTargetDurationSeconds, fps, logger) {
   if (fs.existsSync(paths.comfyuiOutput)) {
     logger.log({ level: 'info', stage: 'encode', message: 'using comfyui output video' });
     return { kind: 'comfyui_video', path: paths.comfyuiOutput, isImageSequence: false };
@@ -63,25 +63,27 @@ function selectVideoSource(job, paths, audioDurationSeconds, fps, logger) {
     throw new AppError('INPUT_NOT_FOUND', 'no visual source available for dummy video');
   }
   const dummyOut = path.join(paths.tempDir, 'dummy.mp4');
-  createStillVideo({ imagePath: stillPath, fps, durationSeconds: audioDurationSeconds, outPath: dummyOut });
+  createStillVideo({ imagePath: stillPath, fps, durationSeconds: visualTargetDurationSeconds, outPath: dummyOut });
   logger.log({ level: 'info', stage: 'encode', message: 'using dummy video source' });
   return { kind: 'dummy', path: dummyOut, isImageSequence: false };
 }
 
-function prepareLipsyncInput(videoSource, job, paths, audioDurationSeconds, fps, logger) {
+function prepareLipsyncInput(videoSource, job, paths, visualTargetDurationSeconds, fps, logger, audioPath) {
   if (fs.existsSync(paths.comfyuiOutputVideo)) {
     return paths.comfyuiOutputVideo;
   }
   ensureTempDir(paths.tempDir);
   const target = paths.preLipsyncVideo;
+  const holdSeconds = job?.buffer?.post_seconds ?? 0;
   if (videoSource.isImageSequence) {
     muxAudioVideo({
       videoInput: videoSource.path,
-      audioInput: job.input.audio,
+      audioInput: audioPath || job.input.audio,
       fps,
       outPath: target,
-      maxDurationSeconds: audioDurationSeconds,
+      maxDurationSeconds: visualTargetDurationSeconds,
       isImageSequence: true,
+      holdSeconds,
     });
     logger.log({ level: 'info', stage: 'lipsync', message: 'rendered pre-lipsync video from frames' });
     return target;
@@ -187,13 +189,32 @@ async function runJob(job, options = {}) {
     logger.log({ level: 'info', stage: 'prepare', message: 'preparing inputs' });
     const comfyuiSeedInfo = resolveComfyuiSeed(normalizedJob, existingManifest);
     const effectiveJob = applyEffectiveSeed(normalizedJob, comfyuiSeedInfo.seed, comfyuiSeedInfo.policy);
+    ensureTempDir(paths.tempDir);
     const inputHashes = await computeInputHashes(effectiveJob);
-    const audioDurationSeconds = getAudioDurationSeconds(normalizedJob.input?.audio);
+    const audioInputDurationSeconds = getAudioDurationSeconds(normalizedJob.input?.audio);
     const preBufferSeconds = normalizedJob?.buffer?.pre_seconds ?? 0;
     const postBufferSeconds = normalizedJob?.buffer?.post_seconds ?? 0;
-    const visualTargetDurationSeconds = audioDurationSeconds + preBufferSeconds;
+    const visualTargetDurationSeconds = audioInputDurationSeconds + preBufferSeconds + postBufferSeconds;
+    let effectiveAudioPath = normalizedJob.input.audio;
+    let paddedAudioDurationSeconds = audioInputDurationSeconds;
+    if (preBufferSeconds > 0 || postBufferSeconds > 0) {
+      const paddedPath = padAudio({
+        audioInput: normalizedJob.input.audio,
+        preSeconds: preBufferSeconds,
+        postSeconds: postBufferSeconds,
+        targetDurationSeconds: visualTargetDurationSeconds,
+        outPath: paths.paddedAudio,
+      });
+      effectiveAudioPath = paddedPath;
+      try {
+        paddedAudioDurationSeconds = getAudioDurationSeconds(paddedPath);
+      } catch (err) {
+        paddedAudioDurationSeconds = visualTargetDurationSeconds;
+      }
+    }
     const prepareDetails = {
-      audioDurationSeconds,
+      audioInputDurationSeconds,
+      audioDurationSeconds: paddedAudioDurationSeconds,
       visualTargetDurationSeconds,
       fps: normalizedJob.determinism?.fps ?? null,
       frameRounding: normalizedJob.determinism?.frame_rounding || 'ceil',
@@ -235,6 +256,8 @@ async function runJob(job, options = {}) {
         seed: currentManifest.seeds?.comfyui_seed ?? effectiveJob?.comfyui?.seed ?? null,
         fps: currentManifest.fps ?? prepareDetails.fps ?? null,
         target_frames: currentManifest.target_frames ?? null,
+        frame_count: currentManifest.target_frames ?? null,
+        visual_target_duration_seconds: visualTargetDurationSeconds,
         prompt: comfyParams.prompt ?? effectiveJob?.motion?.prompt ?? null,
         negative: comfyParams.negative ?? comfyParams.negative_prompt ?? null,
         width: comfyParams.width ?? 768,
@@ -289,7 +312,7 @@ async function runJob(job, options = {}) {
     const lipsyncEnabled = normalizedJob?.lipsync?.enable !== false;
     const lipsyncProvider = normalizedJob?.lipsync?.provider || null;
     const allowPassthrough = normalizedJob?.lipsync?.params?.allow_passthrough === true;
-    const videoSource = selectVideoSource(normalizedJob, paths, audioDurationSeconds, prepareDetails.fps, logger);
+    const videoSource = selectVideoSource(normalizedJob, paths, visualTargetDurationSeconds, prepareDetails.fps, logger);
     let encodeVideoSource = videoSource;
 
     if (!lipsyncEnabled) {
@@ -301,7 +324,15 @@ async function runJob(job, options = {}) {
       manifest.recordPhase(paths.manifest, 'lipsync', 'queued', { provider: lipsyncProvider, out_path: paths.lipsyncOutputVideo });
       let preLipVideoPath = null;
       try {
-        preLipVideoPath = prepareLipsyncInput(videoSource, normalizedJob, paths, audioDurationSeconds, prepareDetails.fps, logger);
+        preLipVideoPath = prepareLipsyncInput(
+          videoSource,
+          normalizedJob,
+          paths,
+          visualTargetDurationSeconds,
+          prepareDetails.fps,
+          logger,
+          effectiveAudioPath
+        );
       } catch (err) {
         manifest.recordPhase(paths.manifest, 'lipsync', 'failed', {
           provider: lipsyncProvider,
@@ -334,7 +365,7 @@ async function runJob(job, options = {}) {
           await runLipSync({
             provider: lipsyncProvider,
             params: normalizedJob?.lipsync?.params || {},
-            audioPath: normalizedJob.input.audio,
+            audioPath: effectiveAudioPath,
             videoPath: preLipVideoPath,
             outPath: paths.lipsyncOutputVideo,
             cwd: paths.base,
@@ -376,16 +407,19 @@ async function runJob(job, options = {}) {
     encodeStarted = true;
     muxAudioVideo({
       videoInput: encodeVideoSource.path,
-      audioInput: normalizedJob.input.audio,
+      audioInput: effectiveAudioPath,
       fps: prepareDetails.fps,
       outPath: paths.final,
-      maxDurationSeconds: audioDurationSeconds,
+      maxDurationSeconds: visualTargetDurationSeconds,
+      holdSeconds: postBufferSeconds,
       isImageSequence: encodeVideoSource.isImageSequence,
     });
     manifest.recordPhase(paths.manifest, 'encode', 'completed', {
       fps: prepareDetails.fps,
       video_source: encodeVideoSource.kind,
-      duration_cap_seconds: audioDurationSeconds,
+      duration_cap_seconds: visualTargetDurationSeconds,
+      audio_duration_seconds: paddedAudioDurationSeconds,
+      audio_path: effectiveAudioPath,
     });
 
     manifest.markFinished(paths.manifest, 'success', { partial_reason: partialReason });

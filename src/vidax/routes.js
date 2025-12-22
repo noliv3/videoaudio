@@ -1,5 +1,6 @@
 const express = require('express');
 const fs = require('fs');
+const path = require('path');
 const { randomUUID } = require('crypto');
 const validateJob = require('../runner/validateJob');
 const runJob = require('../runner/runJob');
@@ -8,6 +9,7 @@ const manifest = require('../runner/manifest');
 const RunnerLogger = require('../runner/logger');
 const { AppError, errorResponse } = require('../errors');
 const { ensureAllAssets, resolveAssetsConfigPath } = require('../setup/assets');
+const { buildProduceJob } = require('../runner/produce');
 
 function mapHttpStatus(code) {
   switch (code) {
@@ -96,6 +98,29 @@ function createRouter(config, deps = {}) {
       res.status(202).json({ ok: true, status: result.status, url: result.url });
     } catch (err) {
       const wrapped = err instanceof AppError ? err : new AppError(err.code || 'COMFYUI_BAD_RESPONSE', err.message, err.details);
+      handleError(res, wrapped);
+    }
+  });
+
+  router.post('/produce', async (req, res) => {
+    try {
+      const runId = randomUUID();
+      const defaultWorkdir = path.join(config.state_dir || stateRoot, 'runs', runId);
+      const job = buildProduceJob(req.body || {}, {
+        runId,
+        comfyuiUrl: config?.comfyui?.url,
+        workflowId: config?.comfyui?.workflow_ids?.[0] || 'vidax_text2img_frames',
+        defaultWorkdir,
+      });
+      const result = await runJob(job, { runId, vidax: { comfyuiClient, processManager } });
+      res.status(202).json({
+        run_id: result.runId,
+        status: result.status,
+        manifest: result.paths?.manifest,
+        workdir: result.paths?.base,
+      });
+    } catch (err) {
+      const wrapped = err instanceof AppError ? err : new AppError(err.code || 'UNKNOWN_ERROR', err.message, err.details);
       handleError(res, wrapped);
     }
   });

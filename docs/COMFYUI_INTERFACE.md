@@ -4,7 +4,7 @@
 - Bild/Video-Start: Frame(s) aus `start_image` oder dekodierte Sequenz aus `start_video` (konformer Farbraum, 8/16 Bit wie Workflow verlangt).
 - Prompt: `motion.prompt` plus zeitabhängige Overrides aus Timing.
 - Seed: gemäß `comfyui.seed_policy` (fix, zufällig pro Job oder pro Retry).
-- FPS und `target_frames`: für Sequenz-Generatoren zur Frameanzahl-Steuerung.
+- FPS und `target_frames`/`frame_count`: für Sequenz-Generatoren zur Frameanzahl-Steuerung; Basis ist `visual_target_duration_seconds = audio_duration + pre + post`.
 - Zusatzparameter: `motion.strength`, `motion.guidance`, Stabilization-Hinweise falls Workflow sie erwartet.
 
 ## Erwartete Outputs
@@ -25,7 +25,7 @@
 ## Workflow-Referenz
 - Runner speichert nur `workflow_id` (string) und optional eine Liste `workflow_ids` als Fallback; keine Graphen im Job-Dokument.
 - Bei mehreren IDs wird in Reihenfolge versucht; jeder Versuch respektiert die Retry-Parameter.
-- Fehlt `workflow_ids`, verwendet der Runner automatisch `vidax_text2img_frames` (bundled Core-Only Workflow). Parameter-Mapping: Prompt aus `comfyui.params.prompt` oder `motion.prompt`, Negative aus `comfyui.params.negative(_prompt)`, Auflösung `width/height` (Default 768), `steps` (Default 20), `cfg` (Default `motion.guidance` oder 7.5), `sampler` (Default `dpmpp_2m`), `scheduler` (Default `karras`), Seed aus der Policy. Output: PNG-Frames via `SaveImage` → `workdir/frames/`.
+- Fehlt `workflow_ids`, verwendet der Runner automatisch `vidax_text2img_frames` (bundled Core-Only Workflow). Parameter-Mapping: Prompt aus `comfyui.params.prompt` oder `motion.prompt`, Negative aus `comfyui.params.negative(_prompt)`, Auflösung `width/height` (Default 1024x576), `steps` (Default 20), `cfg` (Default `motion.guidance` oder 7.5), `sampler` (Default `dpmpp_2m`), `scheduler` (Default `karras`), Seed aus der Policy, `frame_count = target_frames`. Output: PNG-Frames via `SaveImage` → `workdir/frames/` (Batch entspricht `frame_count`, Phase 1 = Standbildsequenz ohne Motion-Modelle; benötigt ein SDXL-Checkpoint wie `sd_xl_base_1.0.safetensors` im ComfyUI-Models-Verzeichnis).
 
 ## Timeout-Regeln
 - `timeout_connect`: Abbruch, wenn keine Verbindung hergestellt werden kann.

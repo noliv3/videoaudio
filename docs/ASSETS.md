@@ -11,6 +11,7 @@
   - `unpack=true` expects a zip archive; contents extract into `dest` with a marker `.asset-meta.json`.
   - `policy`: `{on_missing, on_hash_mismatch, allow_insecure_http}` defaults → `download`, `fail`, `false`.
   - Reale SHA-256-Werte sind Pflicht, Platzhalter werden nicht akzeptiert.
+  - Default-Workflow `vidax_text2img_frames` erwartet ein SDXL-Checkpoint (z. B. `sd_xl_base_1.0.safetensors`) im ComfyUI-Models-Verzeichnis; das Manifest liefert keine Modelle aus.
 - **Verification Rules**:
   - SHA-256 is enforced on downloads; mismatches raise `UNSUPPORTED_FORMAT`.
   - Existing files with mismatched hashes honor `on_hash_mismatch` (default fail).
@@ -19,5 +20,5 @@
 - **Install/Check**:
   - `va install` and `POST /install` perform downloads + verification; failures bubble as `UNSUPPORTED_FORMAT` for hash mismatches/download issues or `OUTPUT_WRITE_FAILED` for write/unzip errors. Gebündelte Workflows aus dem Repo werden zuerst nach `state/assets/workflows/` kopiert, sodass relative/file-Quellen offline installiert werden können.
   - `GET /install/status` reports `ok`/`missing`/`hash_mismatch`/`unknown` without downloading.
-  - Job start triggers an asset check; missing/invalid assets surface `INPUT_NOT_FOUND` (missing) or `UNSUPPORTED_FORMAT` (hash mismatch/blocked download) before ComfyUI starts.
+  - Job start prüft Assets nur blocking, wenn ComfyUI auto-gestartet werden muss; laufende Instanzen mit `ok`-Health überspringen Blocking, fehlende Einträge erscheinen weiterhin in den Status-Reports.
 - **Tooling Requirements**: `unzip` must exist on PATH for `unpack=true`. If absent, the asset stays uninstalled and the install step fails with `OUTPUT_WRITE_FAILED`.

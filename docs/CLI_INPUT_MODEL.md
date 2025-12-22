@@ -1,21 +1,27 @@
 # CLI Input Model
 
 ## Ziel
-Die CLI sammelt deklarative Eingaben (Quellen + Buffer) und schreibt immer ein normatives `job.json`, ohne Frame- oder Längenberechnungen.
+Die CLI sammelt Produktions-Eingaben (`va produce ...`), baut daraus ein vollständiges `job.json` und startet die Pipeline direkt. Frame- und Längenberechnungen bleiben serverseitig, basierend auf Audio + Buffer.
 
 ## Flags (Beispiel)
-- `--audio <path>`: Pflicht. Definiert `audio_source` (Master) und bestimmt `audio_duration`.
-- `--video <path>` oder `--image <path>`: Optional. Setzt `visual_source` mit eigener Origin-Länge.
-- `--buffer <seconds>`: Komfort-Flag, setzt `pre_buffer` auf Sekundenwert (alias `--pre-buffer`).
-- `--pre-buffer <seconds>` / `--post-buffer <seconds>`: Explizite Buffer-Angaben; `post-buffer` schlägt aktuell immer mit VALIDATION_ERROR fehl (Audio-Padding fehlt).
-- `--audio-padding`: Platzhalter für künftige Audiopufferung; aktuell ohne Wirkung.
+- `va produce --audio <A> --start <A_img_or_vid> [--end <C_img>] [--pre <sec>] [--post <sec>] [--fps N] [--prompt "..."] [--neg "..."] [--width W] [--height H] [--seed_policy fixed|random|per_retry] [--seed N] [--lipsync on|off] [--lipsync_provider id] [--workdir <dir>] [--comfyui_url <url>]`
+- `--audio`: Pflicht, Master-Timeline.
+- `--start`: Pflicht, Bild oder Video (XOR).
+- `--end`: Optionales Endbild, wird als letzter Hold genutzt.
+- `--pre` / `--post`: Buffer in Sekunden; werden durch Audio-Padding (Stille) + Frame-Hold umgesetzt.
+- `--prompt`/`--neg`: Pflicht/optional für den Render-Workflow.
+- `--width`/`--height`: Standard 1024x576; beeinflusst ComfyUI-Framegröße.
+- `--fps`: Standard 25.
+- `--seed_policy`/`--seed`: Seed-Weitergabe an ComfyUI.
+- `--lipsync`: `on|off`, default on; `--lipsync_provider` benennt den Provider (Pflicht, wenn LipSync aktiv ist).
+- `--workdir`: Basis für Output (default `./workdir/run-<ts>`); Final-Basename `fertig.mp4`.
 
 ## Normalisiertes job.json
-- Enthält Quellen und Buffer-Werte im `buffer`-Block (siehe `docs/JOB_SCHEMA.md`).
-- CLI fügt keine Dauerfelder hinzu; Dauer wird im Backend aus den Quellen bestimmt.
-- LipSync/ComfyUI-Parameter bleiben unverändert; Buffer wirkt nur auf die Zielzeitspanne für visuelle Generierung.
+- Enthält Quellen (audio/start/end) + Buffer in `buffer`, determinism (`fps`, `frame_rounding=ceil`), Lipsync-Konfiguration und ComfyUI-Parameter (Prompt, Negative, Auflösung, Seed-Policy, Workflow-ID `vidax_text2img_frames`).
+- Workdir wird aufgelöst/absolut gesetzt, `final_name` = `fertig.mp4`.
+- Dauerberechnung bleibt im Runner: `visual_target_duration = audio_duration + pre + post`, `target_frames` via `ceil(fps*duration)`.
 
 ## Semantik
-- Audio bleibt Master: `audio_duration` bestimmt den Mux-Horizont.
-- `visual_generation_duration = audio_duration + pre_buffer`; Post-Buffer wird abgelehnt, solange Audio-Padding fehlt.
-- Buffer wirkt vor der LipSync-Phase; CLI verändert Timing nicht, sondern beschreibt nur die Intention.
+- Audio bleibt Master, wird bei gesetztem Buffer mit Stille gepaddet; Video hält das letzte Frame für den Post-Puffer.
+- `visual_generation_duration = audio_duration + pre + post`; `target_frames` wird daraus abgeleitet und an ComfyUI als `frame_count` durchgereicht.
+- Buffer wirkt vor LipSync; LipSync verarbeitet die gepaddete Audio-/Videoversion.

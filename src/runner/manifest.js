@@ -29,6 +29,7 @@ function baseManifest(job, runId) {
       audio: null,
       end: null,
     },
+    audio_input_duration_seconds: null,
     audio_duration_seconds: null,
     visual_target_duration_seconds: null,
     buffer_applied: null,
@@ -112,11 +113,18 @@ function recordPhase(manifestPath, phase, status, extra = {}) {
 
 function recordPrepare(manifestPath, details) {
   return updateManifest(manifestPath, (m) => {
-    const audioDuration = details.audioDurationSeconds ?? m.audio_duration_seconds;
+    const audioInputDuration = details.audioInputDurationSeconds ?? m.audio_input_duration_seconds ?? null;
+    const audioDuration = details.audioDurationSeconds ?? m.audio_duration_seconds ?? audioInputDuration;
     const fps = details.fps ?? m.fps;
     const bufferApplied = normalizeBuffer(details.bufferApplied, m.buffer_applied);
-    const visualDuration = resolveVisualDuration(details.visualTargetDurationSeconds, audioDuration, bufferApplied);
+    const visualDuration = resolveVisualDuration(
+      details.visualTargetDurationSeconds,
+      audioDuration,
+      bufferApplied,
+      audioInputDuration
+    );
     const targetFrames = computeTargetFrames(visualDuration, fps, details.frameRounding);
+    m.audio_input_duration_seconds = audioInputDuration ?? audioDuration;
     m.audio_duration_seconds = audioDuration;
     m.visual_target_duration_seconds = visualDuration;
     m.buffer_applied = bufferApplied;
@@ -143,11 +151,13 @@ function normalizeBuffer(bufferApplied, current) {
   };
 }
 
-function resolveVisualDuration(visualTargetDurationSeconds, audioDuration, bufferApplied) {
+function resolveVisualDuration(visualTargetDurationSeconds, audioDuration, bufferApplied, audioInputDuration) {
   if (visualTargetDurationSeconds != null) return visualTargetDurationSeconds;
-  if (audioDuration == null) return null;
+  const baseAudio = audioDuration ?? audioInputDuration;
+  if (baseAudio == null) return null;
   const pre = bufferApplied?.pre_seconds ?? 0;
-  return audioDuration + pre;
+  const post = bufferApplied?.post_seconds ?? 0;
+  return baseAudio + pre + post;
 }
 
 function computeTargetFrames(durationSeconds, fps, rounding = 'ceil') {

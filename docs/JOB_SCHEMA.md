@@ -25,14 +25,14 @@ Validierungsfehler: fehlende oder doppelte Startquelle, fehlende Audio-Datei, ni
 | Feld | Typ | Pflicht | Standard | Regeln |
 | --- | --- | --- | --- | --- |
 | `pre_seconds` | number | Nein | 0 | Vorlauf vor Audiostart; wirkt vor LipSync und beeinflusst nur die visuelle Zielzeit. |
-| `post_seconds` | number | Nein | 0 | Nachlauf nach Audioende; aktuell verboten, weil kein Audio-Padding existiert. |
-| `audio_padding` | boolean | Nein | false | Reserviert für künftige Audiopufferung; derzeit ohne Wirkung. |
+| `post_seconds` | number | Nein | 0 | Nachlauf nach Audioende; wird mit Audiopadding + Frame-Hold umgesetzt. |
+| `audio_padding` | boolean | Nein | false | Optionales Flag, Audio wird derzeit immer gepaddet, wenn Buffer > 0. |
 
 **Regeln:**
-- `visual_generation_duration = audio_duration + pre_seconds` (siehe [INPUT_ABSTRACTION](./INPUT_ABSTRACTION.md)); `post_seconds` ist derzeit gesperrt.
+- `visual_generation_duration = audio_duration + pre_seconds + post_seconds` (siehe [INPUT_ABSTRACTION](./INPUT_ABSTRACTION.md)).
 - Wenn `pre_seconds` oder `post_seconds` negativ sind → `VALIDATION_ERROR`.
-- Wenn `post_seconds > 0` → `VALIDATION_ERROR`, da Audio-Padding nicht implementiert ist und Audio den Horizont vorgibt.
-- Buffer ändert nie die Audiolänge oder Mux-Dauer; LipSync arbeitet immer auf der ungepaddeten Audioquelle.
+- Bei gesetzten Buffern wird Audio mit Stille vor-/nachbereitet und Video klont das letzte Frame für den Post-Puffer.
+- Buffer verschiebt den Mux-Horizont: Audio-Master = gepaddete Audiodauer; LipSync läuft auf gepaddeter Audioquelle.
 
 ### motion
 | Feld | Typ | Pflicht | Standard | Regeln |
@@ -53,17 +53,17 @@ Validierungsregeln: Beide Timing-Quellen dürfen nicht gleichzeitig gesetzt sein
 | Feld | Typ | Pflicht | Standard | Regeln |
 | --- | --- | --- | --- | --- |
 | `enable` | boolean | Nein | true | Deaktiviert LipSync, wenn false. |
-| `provider` | string | Nein | — | Muss in [LIPSYNC_INTERFACE](./LIPSYNC_INTERFACE.md) beschrieben und in `config/lipsync.providers.json` registriert sein. |
+| `provider` | string | Ja, wenn `enable=true` | — | Muss in [LIPSYNC_INTERFACE](./LIPSYNC_INTERFACE.md) beschrieben und in `config/lipsync.providers.json` registriert sein. |
 | `params` | object | Nein | {} | Provider-spezifische Durchreichparameter; `allow_passthrough` erlaubt Encode trotz Providerfehler. |
 
-LipSync wird nur ausgeführt, wenn `enable=true` **und** `provider` gesetzt ist; fehlender Provider führt zu `lipsync.skipped`. Unbekannter Provider oder fehlende Registry → `VALIDATION_ERROR`.
+LipSync wird nur ausgeführt, wenn `enable=true` **und** `provider` gesetzt ist; fehlender Provider bei aktivem LipSync → `VALIDATION_ERROR`. Unbekannter Provider oder fehlende Registry → `VALIDATION_ERROR`.
 
 ### comfyui
 | Feld | Typ | Pflicht | Standard | Regeln |
 | --- | --- | --- | --- | --- |
 | `server` | string (URL) | Ja | — | Basis-URL des ComfyUI-Servers. |
 | `workflow_ids` | array[string] | Nein | [] | Liste möglicher Workflow-IDs; erste nutzbare wird gewählt. |
-| `params` | object | Nein | {} | Optional: `prompt`, `negative`/`negative_prompt`, `width`, `height`, `steps`, `cfg`, `sampler`, `scheduler`; Defaults: Prompt aus `motion.prompt`, negative leer, Auflösung 768x768, `steps=20`, `cfg=motion.guidance` oder 7.5, `sampler="dpmpp_2m"`, `scheduler="karras"`. |
+| `params` | object | Nein | {} | Optional: `prompt`, `negative`/`negative_prompt`, `width`, `height`, `steps`, `cfg`, `sampler`, `scheduler`; Defaults: Prompt aus `motion.prompt`, negative leer, Auflösung 1024x576, `steps=20`, `cfg=motion.guidance` oder 7.5, `sampler="dpmpp_2m"`, `scheduler="karras"`. |
 | `seed_policy` | string | Nein | "fixed" | Werte: `fixed` (verwende bereitgestellten Seed oder generiere einen), `random` (immer generiert, bereitgestellter Seed verboten), `per_retry` (neuer Seed pro Submit-Versuch; aktuell wird der erste Laufseed genutzt, da keine Retry-Schleife aktiv ist). |
 | `seed` | integer | Nein | generiert | Muss Integer im Bereich `0..4294967295` sein; verboten, wenn `seed_policy=random`. |
 | `retries` | integer | Nein | 2 | Max. Wiederholungen bei retryable Fehlern. |
@@ -92,8 +92,8 @@ Wenn `workflow_ids` fehlt oder leer ist, setzt der Runner intern `workflow_ids[0
 | `frame_rounding` | string | Nein | "ceil" | Werte: `ceil` oder `round`; regelt Berechnung von `target_frames`. |
 
 **Regeln:**
-- Ziel-Frames: `target_frames = frame_rounding(fps * visual_generation_duration)` mit `visual_generation_duration = audio_duration + pre_seconds`; Empfehlung und Default: `ceil`.
-- Video darf nicht länger als Audio sein; maximaler Drift: < 1 Frame; überschüssige Frames werden getrimmt (siehe Output-Vertrag).
+- Ziel-Frames: `target_frames = frame_rounding(fps * visual_generation_duration)` mit `visual_generation_duration = audio_duration + pre_seconds + post_seconds`; Empfehlung und Default: `ceil`.
+- Video wird auf die gepaddete Audiodauer ausgerichtet (max. Drift < 1 Frame); überschüssige Frames werden getrimmt, fehlende Frames durch Frame-Hold ausgeglichen (siehe Output-Vertrag).
 - FPS ist immer CFR (konstant); VFR wird nicht unterstützt.
 
 ## Validierungsfehler

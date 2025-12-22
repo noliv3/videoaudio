@@ -48,11 +48,11 @@ class ProcessManager {
 
   async ensureComfyUI(options = {}) {
     const requireWorkflows = options.requireWorkflows ?? this.requiresWorkflows();
-    await this.ensureAssetsReady(requireWorkflows);
-    const healthy = await this.checkHealth();
     const comfyUrl = this.config.url || defaults.url;
+    const healthy = await this.checkHealth();
     if (healthy.ok) {
       this.state = 'ready';
+      await this.ensureAssetsReady(requireWorkflows, { tolerateErrors: true });
       return { status: 'ready', url: comfyUrl };
     }
 
@@ -62,6 +62,7 @@ class ProcessManager {
       throw error;
     }
 
+    await this.ensureAssetsReady(requireWorkflows);
     if (!this.startPromise) {
       this.startPromise = this.startComfyUI({ requireWorkflows });
     }
@@ -138,8 +139,9 @@ class ProcessManager {
     }
   }
 
-  async ensureAssetsReady(requireWorkflows = this.requiresWorkflows()) {
-    if (!this.config.assets_config) return true;
+  async ensureAssetsReady(requireWorkflows = this.requiresWorkflows(), options = {}) {
+    const { tolerateErrors = false } = options;
+    if (!this.config.assets_config) return { ok: true };
     const assetsStateDir = this.config.state_dir || stateRoot;
     const status = await ensureAllAssets(this.config.assets_config, assetsStateDir, { install: false, strict: false });
     if (!this.config.paths) {
@@ -154,9 +156,11 @@ class ProcessManager {
     if (!status.ok && requireWorkflows) {
       const missing = [...(status.workflows || []), ...(status.models || [])].filter((item) => item.status !== 'ok');
       const code = missing.some((m) => m.status === 'missing') ? 'INPUT_NOT_FOUND' : 'UNSUPPORTED_FORMAT';
-      throw new AppError(code, 'required ComfyUI assets missing or invalid', { assets: status });
+      if (!tolerateErrors) {
+        throw new AppError(code, 'required ComfyUI assets missing or invalid', { assets: status });
+      }
     }
-    return status.ok;
+    return status;
   }
 
   resolveCommand() {

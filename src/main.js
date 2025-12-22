@@ -10,6 +10,7 @@ const manifest = require('./runner/manifest');
 const { AppError, mapErrorToExitCode } = require('./errors');
 const { runInstallFlow } = require('./setup/install');
 const { runDoctor } = require('./setup/doctor');
+const { buildProduceJob } = require('./runner/produce');
 
 function loadJob(file) {
   if (!fs.existsSync(file)) {
@@ -71,6 +72,57 @@ yargs(hideBin(process.argv))
       exitWithError(err);
     }
   })
+  .command(
+    'produce',
+    'build and run a job from CLI flags',
+    (y) =>
+      y
+        .option('audio', { type: 'string', demandOption: true, describe: 'audio file (master)' })
+        .option('start', { type: 'string', demandOption: true, describe: 'start image or video' })
+        .option('end', { type: 'string', describe: 'optional end image' })
+        .option('pre', { type: 'number', default: 0, describe: 'seconds of pre-roll visuals' })
+        .option('post', { type: 'number', default: 0, describe: 'seconds of post-roll visuals' })
+        .option('fps', { type: 'number', default: 25, describe: 'target fps' })
+        .option('prompt', { type: 'string', demandOption: true, describe: 'prompt for render' })
+        .option('neg', { type: 'string', describe: 'negative prompt' })
+        .option('width', { type: 'number', describe: 'render width' })
+        .option('height', { type: 'number', describe: 'render height' })
+        .option('seed_policy', { choices: ['fixed', 'random', 'per_retry'], default: 'fixed' })
+        .option('seed', { type: 'number', describe: 'seed (when allowed by policy)' })
+        .option('lipsync', { choices: ['on', 'off'], default: 'on' })
+        .option('lipsync_provider', { type: 'string', describe: 'lip sync provider id' })
+        .option('workdir', { type: 'string', describe: 'output workdir' })
+        .option('comfyui_url', { type: 'string', describe: 'ComfyUI server URL' }),
+    async (args) => {
+      try {
+        const job = buildProduceJob(
+          {
+            audio: args.audio,
+            start: args.start,
+            end: args.end,
+            pre: args.pre,
+            post: args.post,
+            fps: args.fps,
+            prompt: args.prompt,
+            negative: args.neg,
+            width: args.width,
+            height: args.height,
+            seed_policy: args.seed_policy,
+            seed: args.seed,
+            lipsync: args.lipsync === 'on' ? true : 'off',
+            lipsync_provider: args.lipsync_provider,
+            workdir: args.workdir,
+            comfyui_url: args.comfyui_url,
+          },
+          {}
+        );
+        const result = await runJob(job, { resume: false });
+        console.log(`RUN ${result.runId}`);
+      } catch (err) {
+        exitWithError(err);
+      }
+    }
+  )
   .command('status <run_id>', 'show run status', (y) => y.positional('run_id', { type: 'string' }), (args) => {
     try {
       const run = resolveRun(args.run_id);
