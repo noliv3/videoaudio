@@ -31,13 +31,19 @@ function resolveResolution(options = {}) {
   const resString = options.resolution || options.resolution_string || options.res;
   if (resString && typeof resString === 'string' && resString.includes('x')) {
     const [w, h] = resString.toLowerCase().split('x');
-    const widthParsed = normalizeNumber(Number(w), 'width', 1024);
-    const heightParsed = normalizeNumber(Number(h), 'height', 576);
+    const widthParsed = normalizeNumber(Number(w), 'width', null);
+    const heightParsed = normalizeNumber(Number(h), 'height', null);
     return { width: widthParsed, height: heightParsed };
   }
-  const width = normalizeNumber(options.width ?? options.resolution_width, 'width', 1024);
-  const height = normalizeNumber(options.height ?? options.resolution_height, 'height', 576);
+  const width = normalizeNumber(options.width ?? options.resolution_width, 'width', null);
+  const height = normalizeNumber(options.height ?? options.resolution_height, 'height', null);
   return { width, height };
+}
+
+function resolveMaxRender(options = {}) {
+  const maxWidth = normalizeNumber(options.max_width ?? options.max_render_width, 'max_width', 854);
+  const maxHeight = normalizeNumber(options.max_height ?? options.max_render_height, 'max_height', 480);
+  return { maxWidth, maxHeight };
 }
 
 function resolveWorkdir(inputWorkdir, runId) {
@@ -66,13 +72,16 @@ function buildProduceJob(raw = {}, options = {}) {
   const fps = normalizeNumber(raw.fps, 'fps', 25);
   const seedPolicy = raw.seed_policy || 'fixed';
   const lipsyncFlag = raw.lipsync || raw.lipsync_enable;
-  const lipsyncEnable = lipsyncFlag === 'off' ? false : lipsyncFlag === false ? false : true;
+  const lipsyncEnable = lipsyncFlag === 'on' || lipsyncFlag === true;
   const lipsyncProvider = raw.lipsync_provider || options.lipsyncProvider || null;
   const { width, height } = resolveResolution(raw);
+  const { maxWidth, maxHeight } = resolveMaxRender(raw);
   const workdir = resolveWorkdir(raw.workdir || options.defaultWorkdir, options.runId);
   const workflowId = raw.workflow_id || options.workflowId || 'vidax_text2img_frames';
   const comfyUrl = raw.comfyui_server || raw.comfyui_url || options.comfyuiUrl || 'http://127.0.0.1:8188';
   const finalName = raw.final_name || raw.output_name || 'fertig.mp4';
+  const comfyuiEnabled = raw.no_comfyui === true ? false : raw.comfyui_enable === false ? false : true;
+  const comfyChunkSize = raw.comfyui_chunk_size || raw.chunk_size || null;
 
   return {
     input: Object.assign(
@@ -82,6 +91,12 @@ function buildProduceJob(raw = {}, options = {}) {
       },
       startFields
     ),
+    render: {
+      requested_width: width || null,
+      requested_height: height || null,
+      max_width: maxWidth,
+      max_height: maxHeight,
+    },
     buffer: { pre_seconds: preSeconds, post_seconds: postSeconds },
     motion: { prompt, guidance: raw.guidance || 7.5 },
     output: { workdir, final_name: finalName, emit_manifest: true, emit_logs: true },
@@ -89,13 +104,15 @@ function buildProduceJob(raw = {}, options = {}) {
     comfyui: {
       server: comfyUrl,
       workflow_ids: [workflowId],
+      enable: comfyuiEnabled,
       seed_policy: seedPolicy,
       seed: raw.seed != null ? raw.seed : undefined,
+      chunk_size: comfyChunkSize,
       params: {
         prompt,
         negative,
-        width,
-        height,
+        width: width || undefined,
+        height: height || undefined,
         steps: raw.steps,
         cfg: raw.cfg,
         sampler: raw.sampler,

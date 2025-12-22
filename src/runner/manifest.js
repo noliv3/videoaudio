@@ -130,6 +130,12 @@ function recordPrepare(manifestPath, details) {
     m.buffer_applied = bufferApplied;
     m.fps = fps;
     m.target_frames = targetFrames;
+    if (details.render_width) {
+      m.render_width = details.render_width;
+    }
+    if (details.render_height) {
+      m.render_height = details.render_height;
+    }
     m.input_hashes = details.hashes || m.input_hashes || {};
     const seeds = Object.assign({}, m.seeds || {});
     seeds.comfyui_seed = details.comfyuiSeed ?? (m.seeds ? m.seeds.comfyui_seed : null) ?? null;
