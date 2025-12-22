@@ -2,7 +2,7 @@ const fs = require('fs');
 const { randomUUID } = require('crypto');
 const path = require('path');
 const validateJob = require('./validateJob');
-const { buildPaths, prepareWorkdir, registerRun } = require('./paths');
+const { buildPaths, prepareWorkdir, registerRun, stateRoot } = require('./paths');
 const RunnerLogger = require('./logger');
 const manifest = require('./manifest');
 const { getAudioDurationSeconds } = require('./audio');
@@ -11,6 +11,8 @@ const { runLipSync } = require('./lipsync');
 const { AppError } = require('../errors');
 const { hashFileSha256 } = require('./hash');
 const { generateSeed, normalizeSeed } = require('./seeds');
+const { buildTextToImagePrompt } = require('./comfyPromptBuilder');
+const ComfyUIClient = require('../vidax/comfyuiClient');
 
 function ensureOutputRules(paths, resume) {
   const manifestExists = fs.existsSync(paths.manifest);
@@ -123,7 +125,8 @@ async function computeInputHashes(job) {
 function resolveComfyuiSeed(job, existingManifest) {
   const manifestSeed = existingManifest?.seeds?.comfyui_seed;
   const manifestPolicy = existingManifest?.seeds?.comfyui_seed_policy;
-  const policy = manifestPolicy || job?.comfyui?.seed_policy || 'fixed';
+  const rawPolicy = manifestPolicy || job?.comfyui?.seed_policy || 'fixed';
+  const policy = rawPolicy === 'random' ? 'random' : 'fixed';
   if (manifestSeed != null) {
     return { seed: manifestSeed, policy };
   }
@@ -144,14 +147,39 @@ function applyEffectiveSeed(job, comfyuiSeed, policy) {
   return Object.assign({}, job, { comfyui });
 }
 
-function applyWorkflowDefaults(job) {
-  const comfyui = Object.assign({}, job.comfyui || {});
-  const workflowIds = Array.isArray(comfyui.workflow_ids) ? comfyui.workflow_ids.filter(Boolean) : [];
-  if (workflowIds.length === 0) {
-    workflowIds.push('vidax_text2img_frames');
+function resolveWorkflowIds(job) {
+  if (!job?.comfyui) return [];
+  if (!Array.isArray(job.comfyui.workflow_ids)) return [];
+  return job.comfyui.workflow_ids.filter(Boolean);
+}
+
+function resolveComfyuiClient(job, existingClient) {
+  if (existingClient) return existingClient;
+  const workflowIds = resolveWorkflowIds(job);
+  if (!workflowIds.length) return null;
+  const url = job?.comfyui?.server || 'http://127.0.0.1:8188';
+  const clientConfig = {
+    url,
+    health_endpoint: job?.comfyui?.health_endpoint,
+    prompt_endpoint: job?.comfyui?.prompt_endpoint,
+    history_endpoint: job?.comfyui?.history_endpoint,
+    view_endpoint: job?.comfyui?.view_endpoint,
+    timeout_total: job?.comfyui?.timeout_total,
+  };
+  return new ComfyUIClient(clientConfig);
+}
+
+function resolveLipsyncConfigPath(vidaxOptions = {}) {
+  const vidaxStateDir = vidaxOptions.stateDir || vidaxOptions.processManager?.config?.state_dir || stateRoot;
+  const stateConfig = path.join(vidaxStateDir, 'config', 'lipsync.providers.json');
+  if (fs.existsSync(stateConfig)) {
+    return stateConfig;
   }
-  comfyui.workflow_ids = workflowIds;
-  return Object.assign({}, job, { comfyui });
+  const repoConfig = path.join(process.cwd(), 'config', 'lipsync.providers.json');
+  if (fs.existsSync(repoConfig)) {
+    return repoConfig;
+  }
+  return stateConfig;
 }
 
 async function runJob(job, options = {}) {
@@ -160,7 +188,7 @@ async function runJob(job, options = {}) {
     throw new AppError('VALIDATION_ERROR', 'Job validation failed', { errors: validation.errors });
   }
 
-  const normalizedJob = applyWorkflowDefaults(job);
+  const normalizedJob = job;
   const resume = !!options.resume;
   const initialRunId = options.runId || randomUUID();
   const paths = buildPaths(normalizedJob, initialRunId);
@@ -169,7 +197,7 @@ async function runJob(job, options = {}) {
   const existingManifest = resume ? manifest.readManifest(paths.manifest) : null;
   const runId = existingManifest?.run_id || initialRunId;
   paths.runId = runId;
-  const comfyuiClient = options?.vidax?.comfyuiClient;
+  let comfyuiClient = resolveComfyuiClient(normalizedJob, options?.vidax?.comfyuiClient);
   const processManager = options?.vidax?.processManager;
   prepareWorkdir(paths);
   registerRun(runId, paths.base);
@@ -229,7 +257,8 @@ async function runJob(job, options = {}) {
     manifest.recordVersions(paths.manifest, { ffmpeg: getFfmpegVersion() });
 
     manifest.recordPhase(paths.manifest, 'comfyui', 'queued');
-    const workflowId = effectiveJob?.comfyui?.workflow_ids?.[0] || null;
+    const workflowIds = resolveWorkflowIds(effectiveJob);
+    const workflowId = workflowIds[0] || null;
     if (!workflowId) {
       logger.log({ level: 'info', stage: 'comfyui', message: 'workflow_id missing, skipping' });
       manifest.recordPhase(paths.manifest, 'comfyui', 'skipped', { note: 'workflow_id missing' });
@@ -244,6 +273,7 @@ async function runJob(job, options = {}) {
         manifest.recordPhase(paths.manifest, 'comfyui', 'failed', { workflow_id: workflowId, error: err.message, code: err.code });
         throw err;
       }
+      comfyuiClient = resolveComfyuiClient(effectiveJob, comfyuiClient);
       if (!comfyuiClient) {
         const err = new AppError('COMFYUI_BAD_RESPONSE', 'ComfyUI client unavailable');
         manifest.recordPhase(paths.manifest, 'comfyui', 'failed', { workflow_id: workflowId, error: err.message, code: err.code });
@@ -251,22 +281,19 @@ async function runJob(job, options = {}) {
       }
       const currentManifest = manifest.readManifest(paths.manifest) || {};
       const comfyParams = effectiveJob?.comfyui?.params || {};
-      const payload = {
-        workflow_id: workflowId,
-        seed: currentManifest.seeds?.comfyui_seed ?? effectiveJob?.comfyui?.seed ?? null,
-        fps: currentManifest.fps ?? prepareDetails.fps ?? null,
-        target_frames: currentManifest.target_frames ?? null,
-        frame_count: currentManifest.target_frames ?? null,
-        visual_target_duration_seconds: visualTargetDurationSeconds,
-        prompt: comfyParams.prompt ?? effectiveJob?.motion?.prompt ?? null,
-        negative: comfyParams.negative ?? comfyParams.negative_prompt ?? null,
-        width: comfyParams.width ?? 768,
-        height: comfyParams.height ?? 768,
+      const targetFrames = currentManifest.target_frames ?? null;
+      const payload = buildTextToImagePrompt({
+        prompt: comfyParams.prompt ?? effectiveJob?.motion?.prompt ?? '',
+        negative: comfyParams.negative ?? comfyParams.negative_prompt ?? '',
+        width: comfyParams.width ?? 1024,
+        height: comfyParams.height ?? 576,
         steps: comfyParams.steps ?? 20,
         cfg: comfyParams.cfg ?? effectiveJob?.motion?.guidance ?? 7.5,
         sampler: comfyParams.sampler ?? 'dpmpp_2m',
         scheduler: comfyParams.scheduler ?? 'karras',
-      };
+        seed: currentManifest.seeds?.comfyui_seed ?? effectiveJob?.comfyui?.seed ?? null,
+        frame_count: targetFrames || 1,
+      });
       try {
         const submitResponse = await comfyuiClient.submitPrompt(payload);
         const promptId = submitResponse?.prompt_id || submitResponse?.id || submitResponse?.promptId || null;
@@ -370,7 +397,7 @@ async function runJob(job, options = {}) {
             outPath: paths.lipsyncOutputVideo,
             cwd: paths.base,
             logger,
-            configPath: path.resolve(process.cwd(), 'config/lipsync.providers.json'),
+            configPath: resolveLipsyncConfigPath(options?.vidax),
           });
           manifest.recordPhase(paths.manifest, 'lipsync', 'completed', {
             provider: lipsyncProvider,

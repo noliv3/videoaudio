@@ -105,15 +105,20 @@ function validateDeterminism(determinism, errors) {
 }
 
 function validateComfy(comfyui, errors) {
-  if (!comfyui || typeof comfyui !== 'object') {
-    errors.push({ field: 'comfyui', message: 'comfyui section required', code: 'VALIDATION_ERROR' });
+  if (!comfyui) return;
+  if (typeof comfyui !== 'object') {
+    errors.push({ field: 'comfyui', message: 'comfyui must be object', code: 'VALIDATION_ERROR' });
     return;
   }
-  if (!comfyui.server) {
-    errors.push({ field: 'comfyui.server', message: 'server url required', code: 'VALIDATION_ERROR' });
+  const workflowIds = Array.isArray(comfyui.workflow_ids) ? comfyui.workflow_ids.filter(Boolean) : [];
+  if (!Array.isArray(comfyui.workflow_ids) && comfyui.workflow_ids != null) {
+    errors.push({ field: 'comfyui.workflow_ids', message: 'workflow_ids must be array', code: 'VALIDATION_ERROR' });
   }
-  if (comfyui.seed_policy && !['fixed', 'random', 'per_retry'].includes(comfyui.seed_policy)) {
-    errors.push({ field: 'comfyui.seed_policy', message: 'seed_policy must be fixed, random, or per_retry', code: 'VALIDATION_ERROR' });
+  if (workflowIds.length > 0 && !comfyui.server) {
+    errors.push({ field: 'comfyui.server', message: 'server url required when workflows are set', code: 'VALIDATION_ERROR' });
+  }
+  if (comfyui.seed_policy && !['fixed', 'random'].includes(comfyui.seed_policy)) {
+    errors.push({ field: 'comfyui.seed_policy', message: 'seed_policy must be fixed or random', code: 'VALIDATION_ERROR' });
   }
   if (comfyui.seed_policy === 'random' && comfyui.seed != null) {
     errors.push({ field: 'comfyui.seed', message: 'seed not allowed when seed_policy is random', code: 'VALIDATION_ERROR' });

@@ -11,7 +11,7 @@
   - `unpack=true` expects a zip archive; contents extract into `dest` with a marker `.asset-meta.json`.
   - `policy`: `{on_missing, on_hash_mismatch, allow_insecure_http}` defaults → `download`, `fail`, `false`.
   - Reale SHA-256-Werte sind Pflicht, Platzhalter werden nicht akzeptiert.
-  - Default-Workflow `vidax_text2img_frames` erwartet ein SDXL-Checkpoint (z. B. `sd_xl_base_1.0.safetensors`) im ComfyUI-Models-Verzeichnis; das Manifest liefert keine Modelle aus.
+  - Bundled Workflow `vidax_text2img_frames` bleibt als Referenz/Asset erhalten; der Runner baut den API-Graph im Code. Für SDXL-Text2Img wird weiterhin ein Checkpoint wie `sd_xl_base_1.0.safetensors` im ComfyUI-Models-Verzeichnis benötigt; das Manifest liefert keine Modelle aus.
 - **Verification Rules**:
   - SHA-256 is enforced on downloads; mismatches raise `UNSUPPORTED_FORMAT`.
   - Existing files with mismatched hashes honor `on_hash_mismatch` (default fail).

@@ -5,12 +5,13 @@ const yargs = require('yargs/yargs');
 const { hideBin } = require('yargs/helpers');
 const runJob = require('./runner/runJob');
 const validateJob = require('./runner/validateJob');
-const { resolveRun } = require('./runner/paths');
+const { resolveRun, stateRoot } = require('./runner/paths');
 const manifest = require('./runner/manifest');
 const { AppError, mapErrorToExitCode } = require('./errors');
 const { runInstallFlow } = require('./setup/install');
 const { runDoctor } = require('./setup/doctor');
 const { buildProduceJob } = require('./runner/produce');
+const ComfyUIClient = require('./vidax/comfyuiClient');
 
 function loadJob(file) {
   if (!fs.existsSync(file)) {
@@ -30,6 +31,21 @@ function withWorkdirOverride(job, workdir) {
   const output = Object.assign({}, job.output || {}, { workdir });
   clone.output = output;
   return clone;
+}
+
+function maybeBuildComfyClient(job) {
+  if (!job?.comfyui) return null;
+  const workflowIds = Array.isArray(job.comfyui.workflow_ids) ? job.comfyui.workflow_ids.filter(Boolean) : [];
+  if (!workflowIds.length) return null;
+  const url = job.comfyui.server || 'http://127.0.0.1:8188';
+  return new ComfyUIClient({
+    url,
+    health_endpoint: job.comfyui.health_endpoint,
+    prompt_endpoint: job.comfyui.prompt_endpoint,
+    history_endpoint: job.comfyui.history_endpoint,
+    view_endpoint: job.comfyui.view_endpoint,
+    timeout_total: job.comfyui.timeout_total,
+  });
 }
 
 function exitWithError(err) {
@@ -66,7 +82,8 @@ yargs(hideBin(process.argv))
   async (args) => {
     try {
       const job = withWorkdirOverride(loadJob(args.job), args.workdir);
-      const result = await runJob(job, { resume: args.resume });
+      const comfyuiClient = maybeBuildComfyClient(job);
+      const result = await runJob(job, { resume: args.resume, vidax: { comfyuiClient, stateDir: stateRoot } });
       console.log(`RUN ${result.runId}`);
     } catch (err) {
       exitWithError(err);
@@ -87,7 +104,7 @@ yargs(hideBin(process.argv))
         .option('neg', { type: 'string', describe: 'negative prompt' })
         .option('width', { type: 'number', describe: 'render width' })
         .option('height', { type: 'number', describe: 'render height' })
-        .option('seed_policy', { choices: ['fixed', 'random', 'per_retry'], default: 'fixed' })
+        .option('seed_policy', { choices: ['fixed', 'random'], default: 'fixed' })
         .option('seed', { type: 'number', describe: 'seed (when allowed by policy)' })
         .option('lipsync', { choices: ['on', 'off'], default: 'on' })
         .option('lipsync_provider', { type: 'string', describe: 'lip sync provider id' })
@@ -116,7 +133,8 @@ yargs(hideBin(process.argv))
           },
           {}
         );
-        const result = await runJob(job, { resume: false });
+        const comfyuiClient = maybeBuildComfyClient(job);
+        const result = await runJob(job, { resume: false, vidax: { comfyuiClient, stateDir: stateRoot } });
         console.log(`RUN ${result.runId}`);
       } catch (err) {
         exitWithError(err);
