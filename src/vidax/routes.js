@@ -112,7 +112,7 @@ function createRouter(config, deps = {}) {
         workflowId: config?.comfyui?.workflow_ids?.[0] || 'vidax_text2img_frames',
         defaultWorkdir,
       });
-      const result = await runJob(job, { runId, vidax: { comfyuiClient, processManager } });
+      const result = await runJob(job, { runId, vidax: { comfyuiClient, processManager, stateDir: config.state_dir || stateRoot } });
       res.status(202).json({
         run_id: result.runId,
         status: result.status,
@@ -214,7 +214,11 @@ function createRouter(config, deps = {}) {
       }
       await processManager.ensureComfyUI();
       res.status(202).json({ run_id: req.params.id, status: 'started', resume });
-      runJob(job, { runId: req.params.id, resume, vidax: { comfyuiClient, processManager } }).catch(() => {});
+      runJob(job, {
+        runId: req.params.id,
+        resume,
+        vidax: { comfyuiClient, processManager, stateDir: config.state_dir || stateRoot },
+      }).catch(() => {});
     } catch (err) {
       const wrapped = err instanceof AppError ? err : new AppError(err.code || 'UNKNOWN_ERROR', err.message, err.details);
       handleError(res, wrapped);

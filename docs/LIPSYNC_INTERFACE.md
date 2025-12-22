@@ -1,7 +1,7 @@
 # LipSync Interface
 
 ## Provider-Registry
-- Konfiguration via `config/lipsync.providers.json` (Mapping `provider -> { command, args_template[] }`).
+- Konfiguration via `VA_STATE_DIR/state/config/lipsync.providers.json` (oder `state_dir` aus `vidax.json`); Fallback auf Repo `config/lipsync.providers.json`. Format: Mapping `provider -> { command, args_template[] }`.
 - `args_template` darf `{audio}`, `{video}`, `{out}` enthalten; zusätzliche `params` werden als `--key=value` (primitive Werte) angehängt.
 - Fehlender oder unbekannter Provider → `VALIDATION_ERROR`.
 
