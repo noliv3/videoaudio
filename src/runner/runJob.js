@@ -68,7 +68,7 @@ function selectVideoSource(job, paths, visualTargetDurationSeconds, fps, logger,
 
   if (framesAvailable(paths.framesDir)) {
     logger.log({ level: 'info', stage: 'encode', message: 'using comfyui frame sequence' });
-    return { kind: 'frames', path: path.join(paths.framesDir, '*.png'), isImageSequence: true };
+    return { kind: 'frames', path: path.join(paths.framesDir, '%06d.png'), isImageSequence: true };
   }
 
   if (startImage) {
@@ -465,7 +465,7 @@ async function runJob(job, options = {}) {
           const collectResult = await comfyuiClient.collectOutputs(
             promptId,
             { videoPath: null, framesDir: paths.framesDir, comfyuiDir: paths.comfyuiDir },
-            { outputs: waitResult?.outputs }
+            { outputs: waitResult?.outputs, start_index: frameIndex + 1 }
           );
           manifest.recordPhase(paths.manifest, 'comfyui', 'running', {
             workflow_id: workflowId,
