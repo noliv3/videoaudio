@@ -203,9 +203,11 @@ yargs(hideBin(process.argv))
       exitWithError(err);
     }
   })
-  .command('install', 'install configs and assets', (y) => y.option('skip-doctor', { type: 'boolean', default: false }), async (args) => {
+  .command('install', 'install configs and assets', (y) => y
+    .option('skip-doctor', { type: 'boolean', default: false })
+    .option('comfy-nodes', { type: 'boolean', default: true, describe: 'install ComfyUI custom nodes and Wav2Lip weights' }), async (args) => {
     try {
-      const result = await runInstallFlow({ skipDoctor: args.skipDoctor });
+      const result = await runInstallFlow({ skipDoctor: args.skipDoctor, installComfyNodes: args.comfyNodes });
       console.log(`State dir: ${result.state_dir}`);
       console.log(`ComfyUI dir: ${result.comfy_root}`);
       if (result.created_configs.length) {
@@ -213,6 +215,9 @@ yargs(hideBin(process.argv))
       }
       console.log(`Assets manifest: ${result.assets.manifest}`);
       console.log(`Assets OK: ${result.assets.ok}`);
+      if (result.comfy_nodes) {
+        console.log(`Custom nodes dir: ${result.comfy_nodes.base_dir}`);
+      }
     } catch (err) {
       exitWithError(err);
     }
