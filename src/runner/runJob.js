@@ -10,6 +10,7 @@ const {
   getFfmpegVersion,
   muxAudioVideo,
   createStillVideo,
+  createMotionVideoFromImage,
   extractFirstFrame,
   padAudio,
   createVideoFromFrames,
@@ -51,6 +52,15 @@ function ensureTempDir(tempDir) {
 }
 
 function selectVideoSource(job, paths, visualTargetDurationSeconds, fps, logger, targetWidth, targetHeight) {
+  const startImage = job.input?.start_image;
+  const startVideo = job.input?.start_video;
+  ensureTempDir(paths.tempDir);
+
+  if (startVideo) {
+    logger.log({ level: 'info', stage: 'encode', message: 'using start_video source' });
+    return { kind: 'start_video', path: startVideo, isImageSequence: false };
+  }
+
   if (fs.existsSync(paths.comfyuiOutput)) {
     logger.log({ level: 'info', stage: 'encode', message: 'using comfyui output video' });
     return { kind: 'comfyui_video', path: paths.comfyuiOutput, isImageSequence: false };
@@ -61,21 +71,33 @@ function selectVideoSource(job, paths, visualTargetDurationSeconds, fps, logger,
     return { kind: 'frames', path: path.join(paths.framesDir, '*.png'), isImageSequence: true };
   }
 
-  const startImage = job.input?.start_image;
-  const startVideo = job.input?.start_video;
-  ensureTempDir(paths.tempDir);
-  let stillPath = startImage;
-  if (!stillPath && startVideo) {
+  if (startImage) {
+    const motionPath = path.join(paths.tempDir, 'motion_fallback.mp4');
+    createMotionVideoFromImage({
+      imagePath: startImage,
+      fps,
+      durationSeconds: visualTargetDurationSeconds,
+      outPath: motionPath,
+      targetWidth,
+      targetHeight,
+      seed: job?.comfyui?.seed,
+    });
+    logger.log({ level: 'info', stage: 'encode', message: 'using motion fallback from start_image' });
+    return { kind: 'motion_fallback', path: motionPath, isImageSequence: false };
+  }
+
+  let dummySource = null;
+  if (startVideo) {
     const extractPath = path.join(paths.tempDir, 'start_frame.png');
     extractFirstFrame({ videoInput: startVideo, outPath: extractPath });
-    stillPath = extractPath;
+    dummySource = extractPath;
   }
-  if (!stillPath) {
+  if (!dummySource) {
     throw new AppError('INPUT_NOT_FOUND', 'no visual source available for dummy video');
   }
   const dummyOut = path.join(paths.tempDir, 'dummy.mp4');
   createStillVideo({
-    imagePath: stillPath,
+    imagePath: dummySource,
     fps,
     durationSeconds: visualTargetDurationSeconds,
     outPath: dummyOut,
@@ -612,7 +634,11 @@ async function runJob(job, options = {}) {
       });
       processedVideos.push(holdPath);
       const concatPath = path.join(paths.tempDir, 'with_end.mp4');
-      concatVideos(processedVideos, concatPath);
+      concatVideos(processedVideos, concatPath, {
+        fps: prepareDetails.fps,
+        targetWidth: renderWidth,
+        targetHeight: renderHeight,
+      });
       encodeVideoSource = { kind: `${encodeVideoSource.kind}_with_end`, path: concatPath, isImageSequence: false };
     }
 
