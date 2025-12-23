@@ -1,9 +1,22 @@
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 const { stateRoot } = require('../runner/paths');
 const { AppError } = require('../errors');
 const { assertDoctor } = require('./doctor');
-const { ensureAllAssets, resolveAssetsConfigPath } = require('./assets');
+const { ensureAllAssets, resolveAssetsConfigPath, downloadTo } = require('./assets');
+
+const defaultWav2LipSources = [
+  process.env.WAV2LIP_GAN_URL,
+  'https://github.com/Rudrabha/Wav2Lip/releases/download/v0.1/wav2lip_gan.pth',
+  'https://huggingface.co/akhaliq/Wav2Lip/resolve/main/wav2lip_gan.pth',
+].filter(Boolean);
+
+const defaultS3fdSources = [
+  process.env.S3FD_MODEL_URL,
+  'https://github.com/Rudrabha/Wav2Lip/releases/download/v0.1/s3fd.pth',
+  'https://huggingface.co/akhaliq/Wav2Lip/resolve/main/s3fd.pth',
+].filter(Boolean);
 
 function ensureStateDirs(baseDir = stateRoot) {
   const comfyRoot = path.join(baseDir, 'comfyui');
@@ -63,11 +76,98 @@ function ensureBundledWorkflows(baseDir = process.cwd()) {
   return created;
 }
 
+function parseBool(value, fallback = true) {
+  if (value === undefined || value === null) return fallback;
+  if (typeof value === 'boolean') return value;
+  const normalized = String(value).trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
+}
+
+function resolveCustomNodesDir() {
+  const envDir = process.env.COMFYUI_DIR;
+  if (envDir) {
+    return path.isAbsolute(envDir) ? envDir : path.resolve(envDir);
+  }
+  if (process.platform === 'win32') {
+    return 'F:\\\\ComfyUI\\\\custom_nodes';
+  }
+  return path.join(stateRoot, 'comfyui', 'custom_nodes');
+}
+
+function runGit(args, cwd) {
+  const result = spawnSync('git', args, { cwd, encoding: 'utf-8' });
+  if (result.error) {
+    throw new AppError('GIT_ERROR', 'git invocation failed', { args, error: result.error.message });
+  }
+  if (result.status !== 0) {
+    throw new AppError('GIT_ERROR', 'git command failed', { args, code: result.status, stderr: result.stderr });
+  }
+  return result.stdout;
+}
+
+function cloneOrUpdateRepo(repoUrl, targetDir) {
+  const parent = path.dirname(targetDir);
+  fs.mkdirSync(parent, { recursive: true });
+  if (!fs.existsSync(targetDir)) {
+    runGit(['clone', repoUrl, targetDir], parent);
+    return { repo: repoUrl, path: targetDir, action: 'cloned' };
+  }
+  if (!fs.existsSync(path.join(targetDir, '.git'))) {
+    throw new AppError('GIT_ERROR', 'target exists but is not a git repo', { path: targetDir, repo: repoUrl });
+  }
+  runGit(['-C', targetDir, 'pull'], targetDir);
+  return { repo: repoUrl, path: targetDir, action: 'updated' };
+}
+
+async function downloadModel(targetPath, sources) {
+  if (fs.existsSync(targetPath)) {
+    return { path: targetPath, action: 'present' };
+  }
+  const errors = [];
+  for (const url of sources) {
+    try {
+      await downloadTo(url, targetPath);
+      return { path: targetPath, action: 'downloaded', url };
+    } catch (err) {
+      errors.push({ url, code: err.code, message: err.message });
+    }
+  }
+  throw new AppError('INPUT_NOT_FOUND', 'all model downloads failed', { target: targetPath, attempts: errors });
+}
+
+async function installComfyCustomNodes() {
+  const customNodesDir = resolveCustomNodesDir();
+  fs.mkdirSync(customNodesDir, { recursive: true });
+  const repos = [
+    { name: 'ComfyUI-VideoHelperSuite', url: 'https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git' },
+    { name: 'ComfyUI_wav2lip', url: 'https://github.com/ShmuelRonen/ComfyUI_wav2lip.git' },
+  ];
+  const repoResults = repos.map((repo) => {
+    const target = path.join(customNodesDir, repo.name);
+    return cloneOrUpdateRepo(repo.url, target);
+  });
+
+  const wav2lipDir = path.join(customNodesDir, 'ComfyUI_wav2lip', 'Wav2Lip');
+  const ganPath = path.join(wav2lipDir, 'checkpoints', 'wav2lip_gan.pth');
+  const s3fdPath = path.join(wav2lipDir, 'face_detection', 'detection', 'sfd', 's3fd.pth');
+  fs.mkdirSync(path.dirname(ganPath), { recursive: true });
+  fs.mkdirSync(path.dirname(s3fdPath), { recursive: true });
+  const models = [
+    await downloadModel(ganPath, defaultWav2LipSources),
+    await downloadModel(s3fdPath, defaultS3fdSources),
+  ];
+
+  return { base_dir: customNodesDir, repos: repoResults, models };
+}
+
 async function runInstallFlow(options = {}) {
   const { skipDoctor = false, assetsPath, requirePython = false } = options;
   if (!skipDoctor) {
     await assertDoctor({ requirePython });
   }
+  const installComfyNodes = parseBool(options.installComfyNodes, parseBool(process.env.VA_INSTALL_COMFY_NODES, true));
   const dirs = ensureStateDirs();
   const createdConfigs = ensureConfigFiles();
   const bundledWorkflows = ensureBundledWorkflows();
@@ -76,12 +176,21 @@ async function runInstallFlow(options = {}) {
   if (!assetsSummary.ok) {
     throw new AppError('UNSUPPORTED_FORMAT', 'asset install incomplete', { assets: assetsSummary });
   }
+  let comfyNodes = null;
+  if (installComfyNodes) {
+    comfyNodes = await installComfyCustomNodes();
+    console.log('ComfyUI custom nodes installed/updated; restart ComfyUI to load changes.');
+  } else {
+    console.log('Skipping ComfyUI custom node install (install_comfy_nodes=false).');
+  }
   return {
     state_dir: dirs.state_dir,
     comfy_root: dirs.comfy_root,
     created_configs: createdConfigs,
     bundled_workflows: bundledWorkflows,
     assets: assetsSummary,
+    install_comfy_nodes: installComfyNodes,
+    comfy_nodes: comfyNodes,
   };
 }
 

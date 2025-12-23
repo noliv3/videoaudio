@@ -302,6 +302,7 @@ async function runJob(job, options = {}) {
   }
 
   const normalizedJob = job;
+  const startSourceKind = normalizedJob.input?.start_image ? 'start_image' : 'start_video';
   const resume = !!options.resume;
   const initialRunId = options.runId || randomUUID();
   const paths = buildPaths(normalizedJob, initialRunId);
@@ -325,6 +326,9 @@ async function runJob(job, options = {}) {
   try {
     let partialReason = null;
     let encodeStarted = false;
+    let comfyuiOutputKind = null;
+    let comfyuiWorkflowId = null;
+    let lipsyncMode = 'off';
     manifest.markStarted(paths.manifest);
     manifest.recordPhase(paths.manifest, 'prepare', 'running');
     logger.log({ level: 'info', stage: 'prepare', message: 'preparing inputs' });
@@ -381,6 +385,7 @@ async function runJob(job, options = {}) {
     manifest.recordPhase(paths.manifest, 'comfyui', 'queued');
     const workflowIds = resolveWorkflowIds(effectiveJob);
     const workflowId = workflowIds[0] || null;
+    comfyuiWorkflowId = workflowId;
     const comfyEnabled = effectiveJob?.comfyui?.enable !== false;
     let videoSource = null;
     if (!comfyEnabled) {
@@ -485,6 +490,10 @@ async function runJob(job, options = {}) {
           output_kind: collectResult.output_kind,
           output_paths: collectResult.output_paths,
         });
+        comfyuiOutputKind = collectResult.output_kind || null;
+        if (comfyuiOutputKind) {
+          lipsyncMode = 'inside_comfy';
+        }
         if (collectResult.output_kind === 'video' && collectResult.output_paths?.length) {
           videoSource = { kind: 'comfyui_video', path: collectResult.output_paths[0], isImageSequence: false };
         } else if (collectResult.output_kind === 'frames') {
@@ -542,6 +551,7 @@ async function runJob(job, options = {}) {
           logger,
           effectiveAudioPath
         );
+        lipsyncMode = 'external';
       } catch (err) {
         manifest.recordPhase(paths.manifest, 'lipsync', 'failed', {
           provider: lipsyncProvider,
@@ -552,6 +562,7 @@ async function runJob(job, options = {}) {
         });
         if (allowPassthrough) {
           partialReason = 'lipsync_failed_passthrough';
+          lipsyncMode = 'external';
           logger.log({
             level: 'warn',
             stage: 'lipsync',
@@ -596,6 +607,7 @@ async function runJob(job, options = {}) {
           });
           if (allowPassthrough) {
             partialReason = 'lipsync_failed_passthrough';
+            lipsyncMode = 'external';
             logger.log({
               level: 'warn',
               stage: 'lipsync',
@@ -671,6 +683,12 @@ async function runJob(job, options = {}) {
       audio_path: effectiveAudioPath,
       render_width: renderWidth,
       render_height: renderHeight,
+      video_source_detail: {
+        start_source: startSourceKind,
+        comfyui_workflow_id: comfyuiWorkflowId,
+        comfyui_output: comfyuiOutputKind,
+        lipsync: lipsyncMode,
+      },
     });
 
     manifest.markFinished(paths.manifest, 'success', { partial_reason: partialReason });
