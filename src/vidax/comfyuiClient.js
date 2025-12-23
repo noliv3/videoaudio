@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { pipeline } = require('stream');
 const { promisify } = require('util');
+const { FormData } = require('undici');
 
 const streamPipeline = promisify(pipeline);
 
@@ -46,6 +47,44 @@ class ComfyUIClient {
     } catch (err) {
       clearTimeout(timer);
       return { ok: false, error: err.message };
+    }
+  }
+
+  async uploadFile(localPath, remoteName) {
+    if (!this.baseUrl) {
+      const error = new Error('ComfyUI baseUrl missing');
+      error.code = 'COMFYUI_URL_MISSING';
+      throw error;
+    }
+    if (!localPath) {
+      const error = new Error('upload path missing');
+      error.code = 'COMFYUI_UPLOAD_FAILED';
+      throw error;
+    }
+    const form = new FormData();
+    const filename = remoteName || path.basename(localPath);
+    form.append('image', fs.createReadStream(localPath), filename);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeout);
+    try {
+      const res = await fetch(`${this.baseUrl}/upload/image`, {
+        method: 'POST',
+        body: form,
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) {
+        const text = await res.text();
+        const error = new Error(`ComfyUI upload failed (${res.status})`);
+        error.details = text;
+        error.code = 'COMFYUI_UPLOAD_FAILED';
+        throw error;
+      }
+      return { ok: true, filename };
+    } catch (err) {
+      clearTimeout(timer);
+      err.code = err.code || 'COMFYUI_UPLOAD_FAILED';
+      throw err;
     }
   }
 
@@ -208,15 +247,19 @@ class ComfyUIClient {
     }
 
     const videos = outputs.filter((o) => o.kind === 'video' && o.url);
-    if (videoTarget && videos.length > 0) {
-      await this.downloadTo(videos[0].url, videoTarget);
-      return { output_kind: 'video', output_paths: [videoTarget] };
+    const defaultVideoTarget = videoTarget || (comfyuiDir ? path.join(comfyuiDir, 'comfyui_video.mp4') : null);
+    if (defaultVideoTarget && videos.length > 0) {
+      const preferredVideo =
+        videos.find((v) => (v.filename || '').toLowerCase().endsWith('.mp4')) ||
+        videos.find((v) => (v.url || '').toLowerCase().includes('.mp4')) ||
+        videos[0];
+      fs.mkdirSync(path.dirname(defaultVideoTarget), { recursive: true });
+      await this.downloadTo(preferredVideo.url, defaultVideoTarget);
+      return { output_kind: 'video', output_paths: [defaultVideoTarget] };
     }
 
     const frames = outputs.filter((o) => o.kind === 'frame' && o.url);
     if (frames.length > 0 && framesDir) {
-      const startIndexRaw = Number(options.start_index);
-      const startIndex = Number.isFinite(startIndexRaw) ? startIndexRaw : 1;
       const sortedFrames = frames
         .map((frame, idx) => ({ frame, idx, key: frame.filename || frame.url || '' }))
         .sort((a, b) => {
@@ -227,7 +270,7 @@ class ComfyUIClient {
       const paths = [];
       for (const item of sortedFrames) {
         const frame = item.frame;
-        const name = `${String(startIndex + index).padStart(6, '0')}.png`;
+        const name = `${String(index + 1).padStart(6, '0')}.png`;
         const dest = path.join(framesDir, name);
         await this.downloadTo(frame.url, dest);
         paths.push(dest);

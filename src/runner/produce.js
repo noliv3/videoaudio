@@ -62,10 +62,7 @@ function buildProduceJob(raw = {}, options = {}) {
   const start = raw.start || raw.start_a;
   const startFields = resolveStartField(start);
   const endImage = raw.end || raw.end_c || raw.end_image;
-  const prompt = raw.prompt || raw.motion_prompt;
-  if (!prompt) {
-    throw new AppError('VALIDATION_ERROR', 'prompt is required');
-  }
+  const prompt = raw.prompt || raw.motion_prompt || '';
   const negative = raw.negative || raw.neg || raw.negative_prompt || '';
   const preSeconds = normalizeNumber(raw.pre ?? raw.pre_seconds, 'pre_seconds', 0);
   const postSeconds = normalizeNumber(raw.post ?? raw.post_seconds, 'post_seconds', 0);
@@ -77,7 +74,8 @@ function buildProduceJob(raw = {}, options = {}) {
   const { width, height } = resolveResolution(raw);
   const { maxWidth, maxHeight } = resolveMaxRender(raw);
   const workdir = resolveWorkdir(raw.workdir || options.defaultWorkdir, options.runId);
-  const workflowId = raw.workflow_id || options.workflowId || 'vidax_text2img_frames';
+  const defaultWorkflowId = startFields.start_image ? 'vidax_wav2lip_image_audio' : 'vidax_wav2lip_video_audio';
+  const workflowId = raw.workflow_id || options.workflowId || defaultWorkflowId;
   const comfyUrl = raw.comfyui_server || raw.comfyui_url || options.comfyuiUrl || 'http://127.0.0.1:8188';
   const finalName = raw.final_name || raw.output_name || 'fertig.mp4';
   const comfyuiEnabled = raw.no_comfyui === true ? false : raw.comfyui_enable === false ? false : true;
@@ -98,7 +96,7 @@ function buildProduceJob(raw = {}, options = {}) {
       max_height: maxHeight,
     },
     buffer: { pre_seconds: preSeconds, post_seconds: postSeconds },
-    motion: { prompt, guidance: raw.guidance || 7.5 },
+    motion: { prompt: prompt || undefined, guidance: raw.guidance || 7.5 },
     output: { workdir, final_name: finalName, emit_manifest: true, emit_logs: true },
     determinism: { fps, audio_master: true, frame_rounding: 'ceil' },
     comfyui: {
@@ -109,8 +107,8 @@ function buildProduceJob(raw = {}, options = {}) {
       seed: raw.seed != null ? raw.seed : undefined,
       chunk_size: comfyChunkSize,
       params: {
-        prompt,
-        negative,
+        prompt: prompt || undefined,
+        negative: negative || undefined,
         width: width || undefined,
         height: height || undefined,
         steps: raw.steps,
