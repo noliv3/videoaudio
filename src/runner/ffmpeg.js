@@ -110,6 +110,70 @@ function createStillVideo({ imagePath, fps, durationSeconds, outPath, targetWidt
   return outPath;
 }
 
+function createMotionVideoFromImage({
+  imagePath,
+  fps,
+  durationSeconds,
+  outPath,
+  targetWidth,
+  targetHeight,
+  seed,
+}) {
+  if (!imagePath || !fps || !durationSeconds || !outPath) {
+    throw new AppError('FFMPEG_FAILED', 'createMotionVideoFromImage missing parameters', {
+      imagePath,
+      fps,
+      durationSeconds,
+      outPath,
+    });
+  }
+  const frames = Math.max(1, Math.ceil(durationSeconds * fps));
+  const seedValue = Number.isFinite(Number(seed)) ? Number(seed) : 0;
+  const phase = (offset) => {
+    const value = Math.sin(seedValue + offset) * 10000;
+    return value - Math.floor(value);
+  };
+  const zoomDirection = phase(1) > 0.5 ? 1 : -1;
+  const startZoom = 1 + 0.02 + phase(2) * 0.03;
+  const targetZoom = startZoom + zoomDirection * (0.04 + phase(3) * 0.06);
+  const zoomStep = (targetZoom - startZoom) / frames;
+  const panRangeX = (phase(4) - 0.5) * 0.12;
+  const panRangeY = (phase(5) - 0.5) * 0.12;
+  const zoomExpr = `zoom+${zoomStep.toFixed(6)}`;
+  const xExpr = `iw/2-(iw/zoom)/2+${panRangeX.toFixed(6)}*iw*on/${frames}`;
+  const yExpr = `ih/2-(ih/zoom)/2+${panRangeY.toFixed(6)}*ih*on/${frames}`;
+  const sizeExpr = targetWidth && targetHeight ? `${targetWidth}x${targetHeight}` : 'iw:ih';
+  const filter =
+    `[0:v]format=rgba,zoompan=z='${zoomExpr}':x='${xExpr}':y='${yExpr}':d=${frames}:s=${sizeExpr}:fps=${fps},` +
+    `zoom='min(max(${startZoom.toFixed(6)},zoom),${targetZoom.toFixed(6)})',format=yuv420p[v]`;
+  const args = [
+    '-y',
+    '-loop',
+    '1',
+    '-i',
+    imagePath,
+    '-filter_complex',
+    filter,
+    '-map',
+    '[v]',
+    '-c:v',
+    'libx264',
+    '-pix_fmt',
+    'yuv420p',
+    '-r',
+    String(fps),
+    '-movflags',
+    '+faststart',
+    outPath,
+  ];
+  const result = spawnSync('ffmpeg', args, { encoding: 'utf-8' });
+  ensureFfmpeg(result, 'motion_video');
+  if (!fs.existsSync(outPath)) {
+    throw new AppError('FFMPEG_FAILED', 'motion video not produced', { outPath });
+  }
+  return outPath;
+}
+
 function padAudio({ audioInput, preSeconds = 0, postSeconds = 0, targetDurationSeconds, outPath }) {
   if (!audioInput || !outPath) {
     throw new AppError('FFMPEG_FAILED', 'padAudio missing parameters', { audioInput, outPath });
@@ -182,14 +246,37 @@ function createVideoFromFrames({ framesPattern, fps, outPath, targetWidth, targe
   return outPath;
 }
 
-function concatVideos(videoPaths, outPath) {
-  if (!Array.isArray(videoPaths) || videoPaths.length === 0 || !outPath) {
-    throw new AppError('FFMPEG_FAILED', 'concatVideos missing parameters', { videoPaths, outPath });
+function concatVideos(videoPaths, outPath, { fps, targetWidth, targetHeight } = {}) {
+  if (!Array.isArray(videoPaths) || videoPaths.length === 0 || !outPath || !fps) {
+    throw new AppError('FFMPEG_FAILED', 'concatVideos missing parameters', { videoPaths, outPath, fps });
   }
-  const listPath = `${outPath}.txt`;
-  const content = videoPaths.map((p) => `file '${p.replace(/'/g, "'\''")}'`).join('\n');
-  fs.writeFileSync(listPath, content, 'utf-8');
-  const args = ['-y', '-f', 'concat', '-safe', '0', '-i', listPath, '-c', 'copy', outPath];
+  const inputs = videoPaths.flatMap((videoPath) => ['-i', videoPath]);
+  const filterParts = videoPaths.map((_, idx) => {
+    const scaleFilter = targetWidth && targetHeight ? `scale=${targetWidth}:${targetHeight}:flags=lanczos,` : '';
+    return `[${idx}:v]${scaleFilter}fps=${fps},format=yuv420p,setpts=PTS-STARTPTS[v${idx}]`;
+  });
+  const concatFilter =
+    filterParts.join(';') +
+    `;${videoPaths
+      .map((_, idx) => `[v${idx}]`)
+      .join('')}concat=n=${videoPaths.length}:v=1:a=0[v]`;
+  const args = [
+    '-y',
+    ...inputs,
+    '-filter_complex',
+    concatFilter,
+    '-map',
+    '[v]',
+    '-r',
+    String(fps),
+    '-c:v',
+    'libx264',
+    '-pix_fmt',
+    'yuv420p',
+    '-movflags',
+    '+faststart',
+    outPath,
+  ];
   const result = spawnSync('ffmpeg', args, { encoding: 'utf-8' });
   ensureFfmpeg(result, 'concat');
   if (!fs.existsSync(outPath)) {
@@ -198,4 +285,13 @@ function concatVideos(videoPaths, outPath) {
   return outPath;
 }
 
-module.exports = { getFfmpegVersion, muxAudioVideo, createStillVideo, extractFirstFrame, padAudio, createVideoFromFrames, concatVideos };
+module.exports = {
+  getFfmpegVersion,
+  muxAudioVideo,
+  createStillVideo,
+  createMotionVideoFromImage,
+  extractFirstFrame,
+  padAudio,
+  createVideoFromFrames,
+  concatVideos,
+};
