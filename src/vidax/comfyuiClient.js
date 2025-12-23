@@ -215,10 +215,19 @@ class ComfyUIClient {
 
     const frames = outputs.filter((o) => o.kind === 'frame' && o.url);
     if (frames.length > 0 && framesDir) {
-      let index = 1;
+      const startIndexRaw = Number(options.start_index);
+      const startIndex = Number.isFinite(startIndexRaw) ? startIndexRaw : 1;
+      const sortedFrames = frames
+        .map((frame, idx) => ({ frame, idx, key: frame.filename || frame.url || '' }))
+        .sort((a, b) => {
+          if (a.key === b.key) return a.idx - b.idx;
+          return a.key.localeCompare(b.key);
+        });
+      let index = 0;
       const paths = [];
-      for (const frame of frames) {
-        const name = frame.filename || `${String(index).padStart(6, '0')}.png`;
+      for (const item of sortedFrames) {
+        const frame = item.frame;
+        const name = `${String(startIndex + index).padStart(6, '0')}.png`;
         const dest = path.join(framesDir, name);
         await this.downloadTo(frame.url, dest);
         paths.push(dest);
