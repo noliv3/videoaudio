@@ -9,15 +9,15 @@ Die CLI sammelt Produktions-Eingaben (`va produce ...`), baut daraus ein vollst�
 - `--start`: Pflicht, Bild oder Video (XOR).
 - `--end`: Optionales Endbild, wird als letzter Hold genutzt.
 - `--pre` / `--post`: Buffer in Sekunden; werden durch Audio-Padding (Stille) + Frame-Hold umgesetzt.
-- `--prompt`/`--neg`: Pflicht/optional für den Render-Workflow.
-- `--width`/`--height`: Standard 1024x576; beeinflusst ComfyUI-Framegröße.
+- `--prompt`/`--neg`: Optional; Default-Workflow ignoriert sie.
+- `--width`/`--height`: Standard aus Startprobe, geklemmt auf `max_width`/`max_height` (Default 854x480); beeinflusst ComfyUI-Framegröße.
 - `--fps`: Standard 25.
 - `--seed_policy`/`--seed`: Seed-Weitergabe an ComfyUI (`fixed` oder `random`).
-- `--lipsync`: `on|off`, default on; `--lipsync_provider` benennt den Provider (Pflicht, wenn LipSync aktiv ist).
+- `--lipsync`: `on|off`, default off; `--lipsync_provider` benennt den Provider (Pflicht, wenn LipSync aktiv ist).
 - `--workdir`: Basis für Output (default `./workdir/run-<ts>`); Final-Basename `fertig.mp4`.
 
 ## Normalisiertes job.json
-- Enthält Quellen (audio/start/end) + Buffer in `buffer`, determinism (`fps`, `frame_rounding=ceil`), Lipsync-Konfiguration und ComfyUI-Parameter (Prompt, Negative, Auflösung, Seed-Policy, Workflow-ID `vidax_text2img_frames` als Default im Produce-Pfad).
+- Enthält Quellen (audio/start/end) + Buffer in `buffer`, determinism (`fps`, `frame_rounding=ceil`), Lipsync-Konfiguration und ComfyUI-Parameter (Prompt, Negative, Auflösung, Seed-Policy, Workflow-ID `vidax_wav2lip_image_audio` für Startbilder oder `vidax_wav2lip_video_audio` für Startvideos als Default im Produce-Pfad).
 - Workdir wird aufgelöst/absolut gesetzt, `final_name` = `fertig.mp4`.
 - Dauerberechnung bleibt im Runner: `visual_target_duration = audio_duration + pre + post`, `target_frames` via `ceil(fps*duration)`.
 

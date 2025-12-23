@@ -109,7 +109,7 @@ function createRouter(config, deps = {}) {
       const job = buildProduceJob(req.body || {}, {
         runId,
         comfyuiUrl: config?.comfyui?.url,
-        workflowId: config?.comfyui?.workflow_ids?.[0] || 'vidax_text2img_frames',
+        workflowId: config?.comfyui?.workflow_ids?.[0],
         defaultWorkdir,
       });
       const result = await runJob(job, { runId, vidax: { comfyuiClient, processManager, stateDir: config.state_dir || stateRoot } });

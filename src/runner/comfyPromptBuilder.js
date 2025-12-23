@@ -6,79 +6,90 @@ function asPositiveInt(value, fallback) {
   return fallback;
 }
 
-function buildTextToImagePrompt(options = {}) {
-  const width = asPositiveInt(options.width, 1024);
-  const height = asPositiveInt(options.height, 576);
-  const frameCount = asPositiveInt(options.frame_count, 1) || 1;
-  const seed = asPositiveInt(options.seed, 0);
-  const steps = asPositiveInt(options.steps, 20);
-  const cfg = typeof options.cfg === 'number' && Number.isFinite(options.cfg) ? options.cfg : 7.5;
-  const sampler = options.sampler || 'dpmpp_2m';
-  const scheduler = options.scheduler || 'karras';
-  const prompt = options.prompt || '';
-  const negative = options.negative || '';
-  const prefix = options.filename_prefix || 'vidax';
-  const checkpoint = options.checkpoint || 'sd_xl_base_1.0.safetensors';
+function buildVidaxWav2LipImagePrompt(options = {}) {
+  const frameCount = asPositiveInt(options.frameCount, 1) || 1;
+  const fps = asPositiveInt(options.fps, 25) || 25;
+  const startImageName = options.startImageName;
+  const audioName = options.audioName;
 
   return {
     prompt: {
       1: {
-        class_type: 'CheckpointLoaderSimple',
-        inputs: { ckpt_name: checkpoint },
+        class_type: 'LoadImage',
+        inputs: { image: startImageName },
       },
       2: {
-        class_type: 'CLIPTextEncode',
+        class_type: 'RepeatImageBatch',
         inputs: {
-          text: prompt,
-          clip: [1, 'CLIP'],
+          images: [1, 'IMAGE'],
+          amount: frameCount,
         },
       },
       3: {
-        class_type: 'CLIPTextEncode',
-        inputs: {
-          text: negative,
-          clip: [1, 'CLIP'],
-        },
+        class_type: 'LoadAudio',
+        inputs: { audio: audioName },
       },
       4: {
-        class_type: 'EmptyLatentImage',
+        class_type: 'Wav2Lip',
         inputs: {
-          width,
-          height,
-          batch_size: frameCount,
+          images: [2, 'IMAGES'],
+          audio: [3, 'AUDIO'],
         },
       },
       5: {
-        class_type: 'KSampler',
+        class_type: 'VHS_VideoCombine',
         inputs: {
-          seed,
-          steps,
-          cfg,
-          sampler_name: sampler,
-          scheduler,
-          denoise: 1,
-          model: [1, 'MODEL'],
-          positive: [2, 'CONDITIONING'],
-          negative: [3, 'CONDITIONING'],
-          latent_image: [4, 'LATENT'],
-        },
-      },
-      6: {
-        class_type: 'VAEDecode',
-        inputs: {
-          samples: [5, 'LATENT'],
-          vae: [1, 'VAE'],
-        },
-      },
-      7: {
-        class_type: 'SaveImage',
-        inputs: {
-          images: [6, 'IMAGE'],
-          filename_prefix: prefix,
+          images: [4, 'IMAGES'],
+          frame_rate: fps,
+          format: 'video/mp4',
         },
       },
     },
   };
 }
 
-module.exports = { buildTextToImagePrompt };
+function buildVidaxWav2LipVideoPrompt(options = {}) {
+  const frameCount = asPositiveInt(options.frameCount, 1) || 1;
+  const fps = asPositiveInt(options.fps, 25) || 25;
+  const width = asPositiveInt(options.width, 854) || 854;
+  const height = asPositiveInt(options.height, 480) || 480;
+  const startVideoName = options.startVideoName;
+  const audioName = options.audioName;
+
+  return {
+    prompt: {
+      1: {
+        class_type: 'VHS_LoadVideo',
+        inputs: {
+          video: startVideoName,
+          force_rate: fps,
+          frame_load_cap: frameCount,
+          force_size: 'Custom',
+          custom_width: width,
+          custom_height: height,
+        },
+      },
+      2: {
+        class_type: 'LoadAudio',
+        inputs: { audio: audioName },
+      },
+      3: {
+        class_type: 'Wav2Lip',
+        inputs: {
+          images: [1, 'IMAGES'],
+          audio: [2, 'AUDIO'],
+        },
+      },
+      4: {
+        class_type: 'VHS_VideoCombine',
+        inputs: {
+          images: [3, 'IMAGES'],
+          frame_rate: fps,
+          format: 'video/mp4',
+        },
+      },
+    },
+  };
+}
+
+module.exports = { buildVidaxWav2LipImagePrompt, buildVidaxWav2LipVideoPrompt };

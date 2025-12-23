@@ -15,6 +15,8 @@ workdir/
   logs/
     runner.log (optional, wenn events.jsonl fehlt)
     events.jsonl (optional, wenn runner.log fehlt)
+  comfyui/
+    comfyui_video.mp4 (primäres ComfyUI-Output)
   frames/ (optional, wenn ComfyUI Frame-Sequenz liefert)
   lipsync/
     output.mp4 (nur wenn LipSync erfolgreich lief)
