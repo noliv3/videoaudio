@@ -21,6 +21,7 @@ Scope: Repository root and all subdirectories.
 - Default Workflow: Inline Wav2Lip-Flow wie oben beschrieben mit `frame_count=target_frames`, `frame_rate=fps`, SaveImage als primärem Output (Frames 6-stellig ab 000001, bei Bedarf zu Video gerendert). Asset-Datei `vidax_text2img_frames` bleibt als Referenz vorhanden, wird aber nicht als aktiver Default genutzt. Manifest `encode.completed` ergänzt `video_source_detail` (Startquelle, `comfyui_workflow_id`, `comfyui_output` video/frames, `lipsync` inside_comfy/external/off).
 - Asset-Handling: Laufende ComfyUI-Instanzen mit `ok`-Health werden nicht durch fehlende Assets blockiert; Auto-Start erfordert gültige Manifest-Assets.
 - Produce-Oberfläche: `va produce`/`POST /produce` bauen Job + Workdir (default `./workdir/run-<ts>` CLI bzw. `~/.va/state/runs/<run_id>` API), setzen `final_name=fertig.mp4` und starten den Run sofort.
+- Wav2Lip-Node-Defaults: `mode` steht auf `sequential` und `face_detect_batch` auf `8`; beide Eingänge können über `comfyui.wav2lip.mode` bzw. `comfyui.wav2lip.face_detect_batch` im Job überschrieben werden und werden in Bild- wie Video-Prompts gesetzt.
 
 ## Style & Content
 - Use deterministic terminology (fps, seed, resolution, target_frames) and emphasize audio-driven timing and trim rules.

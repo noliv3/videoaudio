@@ -11,6 +11,8 @@ function buildVidaxWav2LipImagePrompt(options = {}) {
   const fps = asPositiveInt(options.fps, 25) || 25;
   const startImageName = options.startImageName;
   const audioName = options.audioName;
+  const wav2lipMode = options.wav2lipMode ?? 'sequential';
+  const faceDetectBatch = asPositiveInt(options.faceDetectBatch, 8) || 8;
 
   return {
     prompt: {
@@ -34,6 +36,8 @@ function buildVidaxWav2LipImagePrompt(options = {}) {
         inputs: {
           images: ['2', 0],
           audio: ['3', 0],
+          mode: wav2lipMode,
+          face_detect_batch: faceDetectBatch,
         },
       },
       5: {
@@ -51,6 +55,8 @@ function buildVidaxWav2LipVideoPrompt(options = {}) {
   const height = asPositiveInt(options.height, 480) || 480;
   const startVideoName = options.startVideoName;
   const audioName = options.audioName;
+  const wav2lipMode = options.wav2lipMode ?? 'sequential';
+  const faceDetectBatch = asPositiveInt(options.faceDetectBatch, 8) || 8;
 
   return {
     prompt: {
@@ -74,6 +80,8 @@ function buildVidaxWav2LipVideoPrompt(options = {}) {
         inputs: {
           images: ['1', 0],
           audio: ['2', 0],
+          mode: wav2lipMode,
+          face_detect_batch: faceDetectBatch,
         },
       },
       4: {
