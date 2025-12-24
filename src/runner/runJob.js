@@ -160,6 +160,13 @@ async function computeInputHashes(job) {
   return { start, audio, end };
 }
 
+function shortHash(hashValue) {
+  if (!hashValue || typeof hashValue !== 'string') return null;
+  const normalized = hashValue.replace(/[^a-fA-F0-9]/g, '');
+  if (!normalized) return null;
+  return normalized.slice(0, 16);
+}
+
 function resolveComfyuiSeed(job, existingManifest) {
   const manifestSeed = existingManifest?.seeds?.comfyui_seed;
   const manifestPolicy = existingManifest?.seeds?.comfyui_seed_policy;
@@ -197,7 +204,7 @@ function resolveComfyuiClient(job, existingClient, vidaxOptions = {}) {
   const workflowIds = resolveWorkflowIds(job);
   if (!comfyEnabled || !workflowIds.length) return null;
   const url = job?.comfyui?.server || 'http://127.0.0.1:8188';
-  let inputDir = null;
+  let inputDir = job?.comfyui?.input_dir || null;
   const comfyCwd = vidaxOptions?.processManager?.config?.comfyui?.cwd;
   if (comfyCwd) {
     inputDir = path.join(comfyCwd, 'input');
@@ -438,28 +445,32 @@ async function runJob(job, options = {}) {
         chunk_size: frameCount,
         chunk_count: 1,
       });
-      const audioRemoteName = path.basename(effectiveAudioPath || normalizedJob.input.audio);
-      const startRemoteName = normalizedJob.input.start_image
-        ? path.basename(normalizedJob.input.start_image)
-        : path.basename(normalizedJob.input.start_video);
       try {
-        const upAudio = await comfyuiClient.uploadFile(effectiveAudioPath, audioRemoteName);
-        const upStart = await comfyuiClient.uploadFile(
+        const audioHash = shortHash(inputHashes.audio) || 'unknown';
+        const startHash = shortHash(inputHashes.start) || 'unknown';
+        const audioExt = path.extname(effectiveAudioPath || normalizedJob.input.audio);
+        const startExt = normalizedJob.input.start_image
+          ? path.extname(normalizedJob.input.start_image)
+          : path.extname(normalizedJob.input.start_video);
+        const audioName = `vidax_audio_${audioHash}${audioExt}`;
+        const startName = `vidax_start_${startHash}${startExt}`;
+        const stagedAudio = comfyuiClient.stageInputFile(effectiveAudioPath, audioName);
+        const stagedStart = comfyuiClient.stageInputFile(
           normalizedJob.input.start_image || normalizedJob.input.start_video,
-          startRemoteName
+          startName
         );
-        const audioName = upAudio?.filename || audioRemoteName;
-        const startName = upStart?.filename || startRemoteName;
+        const audioInputName = stagedAudio?.name || audioName;
+        const startInputName = stagedStart?.name || startName;
         const payload = normalizedJob.input.start_image
           ? buildVidaxWav2LipImagePrompt({
-              startImageName: startName,
-              audioName: audioName,
+              startImageName: startInputName,
+              audioName: audioInputName,
               fps: prepareDetails.fps,
               frameCount,
             })
           : buildVidaxWav2LipVideoPrompt({
-              startVideoName: startName,
-              audioName: audioName,
+              startVideoName: startInputName,
+              audioName: audioInputName,
               fps: prepareDetails.fps,
               frameCount,
               width: renderWidth,

@@ -101,18 +101,13 @@ function resolveComfyPython() {
     return process.env.COMFYUI_PYTHON;
   }
   const isWin = process.platform === 'win32';
-  const comfyDir = process.env.COMFYUI_DIR;
-  if (isWin && comfyDir) {
-    const embedded = path.join(comfyDir, 'python_embeded', 'python.exe');
-    if (fs.existsSync(embedded)) return embedded;
+  const comfyDir = process.env.COMFYUI_DIR || path.join(stateRoot, 'comfyui');
+  if (isWin) {
     const venvScript = path.join(comfyDir, 'venv', 'Scripts', 'python.exe');
     if (fs.existsSync(venvScript)) return venvScript;
-  }
-  if (isWin && !comfyDir) {
-    const embedded = 'F:\\\\ComfyUI\\\\python_embeded\\\\python.exe';
-    if (fs.existsSync(embedded)) return embedded;
-    const venvScript = 'F:\\\\ComfyUI\\\\venv\\\\Scripts\\\\python.exe';
-    if (fs.existsSync(venvScript)) return venvScript;
+  } else {
+    const venvBin = path.join(comfyDir, 'venv', 'bin', 'python');
+    if (fs.existsSync(venvBin)) return venvBin;
   }
   return 'python';
 }

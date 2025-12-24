@@ -2,7 +2,14 @@ const fs = require('fs');
 const path = require('path');
 const { pipeline } = require('stream');
 const { promisify } = require('util');
-const { FormData } = require('undici');
+let FormDataConstructor = globalThis.FormData;
+if (!FormDataConstructor) {
+  try {
+    ({ FormData: FormDataConstructor } = require('undici'));
+  } catch (err) {
+    FormDataConstructor = null;
+  }
+}
 
 const streamPipeline = promisify(pipeline);
 const imageExt = ['.png', '.jpg', '.jpeg', '.webp'];
@@ -15,14 +22,23 @@ class ComfyUIClient {
     this.historyEndpoint = config.history_endpoint || '/history';
     this.viewEndpoint = config.view_endpoint || '/view';
     this.timeout = config.timeout_total || 60000;
-    let inputDir = config.input_dir || process.env.COMFYUI_INPUT_DIR || null;
-    if (!inputDir && process.env.COMFYUI_DIR) {
-      inputDir = path.join(process.env.COMFYUI_DIR, 'input');
+    this.inputDir = this.resolveInputDir(config);
+  }
+
+  resolveInputDir(config = {}) {
+    if (config.input_dir) {
+      return path.resolve(config.input_dir);
     }
-    if (!inputDir && process.platform === 'win32') {
-      inputDir = 'F:\\ComfyUI\\input';
+    if (process.env.COMFYUI_INPUT_DIR) {
+      return path.resolve(process.env.COMFYUI_INPUT_DIR);
     }
-    this.inputDir = inputDir ? path.resolve(inputDir) : null;
+    if (process.env.COMFYUI_DIR) {
+      return path.resolve(path.join(process.env.COMFYUI_DIR, 'input'));
+    }
+    if (process.platform === 'win32') {
+      return 'F:\\ComfyUI\\input';
+    }
+    return null;
   }
 
   async health() {
@@ -91,7 +107,12 @@ class ComfyUIClient {
       return { ok: true, filename, method };
     };
     if (imageExt.includes(ext)) {
-      const form = new FormData();
+      if (!FormDataConstructor) {
+        const error = new Error('FormData not available for upload');
+        error.code = 'COMFYUI_UPLOAD_FAILED';
+        throw error;
+      }
+      const form = new FormDataConstructor();
       form.append('image', fs.createReadStream(localPath), filename);
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), this.timeout);
@@ -120,6 +141,43 @@ class ComfyUIClient {
       }
     }
     return copyToInput('copy');
+  }
+
+  stageInputFile(localPath, desiredName, options = {}) {
+    const force = options.force === true;
+    const inputDir = this.inputDir || this.resolveInputDir(options);
+    if (!inputDir) {
+      const error = new Error('ComfyUI input_dir missing for staging');
+      error.code = 'COMFYUI_UPLOAD_FAILED';
+      error.details = { input_dir: inputDir, source: localPath };
+      throw error;
+    }
+    if (!localPath || !desiredName) {
+      const error = new Error('stageInputFile requires localPath and desiredName');
+      error.code = 'COMFYUI_UPLOAD_FAILED';
+      error.details = { input_dir: inputDir, source: localPath, desired: desiredName };
+      throw error;
+    }
+    if (!fs.existsSync(localPath)) {
+      const error = new Error('stageInputFile source missing');
+      error.code = 'COMFYUI_UPLOAD_FAILED';
+      error.details = { source: localPath };
+      throw error;
+    }
+    fs.mkdirSync(inputDir, { recursive: true });
+    const dest = path.join(inputDir, desiredName);
+    if (path.resolve(localPath) === path.resolve(dest)) {
+      return { name: desiredName, fullPath: dest, method: 'reuse' };
+    }
+    const srcStat = fs.statSync(localPath);
+    if (fs.existsSync(dest)) {
+      const destStat = fs.statSync(dest);
+      if (!force && destStat.size === srcStat.size) {
+        return { name: desiredName, fullPath: dest, method: 'reuse' };
+      }
+    }
+    fs.copyFileSync(localPath, dest);
+    return { name: desiredName, fullPath: dest, method: 'copy' };
   }
 
   async submitPrompt(payload) {
@@ -295,10 +353,26 @@ class ComfyUIClient {
     const frames = outputs.filter((o) => o.kind === 'frame' && o.url);
     if (frames.length > 0 && framesDir) {
       const sortedFrames = frames
-        .map((frame, idx) => ({ frame, idx, key: frame.filename || frame.url || '' }))
+        .map((frame, idx) => ({
+          frame,
+          idx,
+          filename: frame.filename || '',
+          url: frame.url || '',
+        }))
         .sort((a, b) => {
-          if (a.key === b.key) return a.idx - b.idx;
-          return a.key.localeCompare(b.key);
+          if (a.filename && b.filename) {
+            const cmp = a.filename.localeCompare(b.filename);
+            if (cmp !== 0) return cmp;
+          } else if (a.filename && !b.filename) {
+            return -1;
+          } else if (!a.filename && b.filename) {
+            return 1;
+          }
+          if (a.url && b.url) {
+            const cmpUrl = a.url.localeCompare(b.url);
+            if (cmpUrl !== 0) return cmpUrl;
+          }
+          return a.idx - b.idx;
         });
       let index = 0;
       const paths = [];

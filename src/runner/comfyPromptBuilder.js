@@ -21,7 +21,7 @@ function buildVidaxWav2LipImagePrompt(options = {}) {
       2: {
         class_type: 'RepeatImageBatch',
         inputs: {
-          images: [1, 'IMAGE'],
+          image: ['1', 0],
           amount: frameCount,
         },
       },
@@ -32,17 +32,13 @@ function buildVidaxWav2LipImagePrompt(options = {}) {
       4: {
         class_type: 'Wav2Lip',
         inputs: {
-          images: [2, 'IMAGES'],
-          audio: [3, 'AUDIO'],
+          images: ['2', 0],
+          audio: ['3', 0],
         },
       },
       5: {
-        class_type: 'VHS_VideoCombine',
-        inputs: {
-          images: [4, 'IMAGES'],
-          frame_rate: fps,
-          format: 'video/mp4',
-        },
+        class_type: 'SaveImage',
+        inputs: { images: ['4', 0], filename_prefix: 'vidax_wav2lip' },
       },
     },
   };
@@ -76,17 +72,13 @@ function buildVidaxWav2LipVideoPrompt(options = {}) {
       3: {
         class_type: 'Wav2Lip',
         inputs: {
-          images: [1, 'IMAGES'],
-          audio: [2, 'AUDIO'],
+          images: ['1', 0],
+          audio: ['2', 0],
         },
       },
       4: {
-        class_type: 'VHS_VideoCombine',
-        inputs: {
-          images: [3, 'IMAGES'],
-          frame_rate: fps,
-          format: 'video/mp4',
-        },
+        class_type: 'SaveImage',
+        inputs: { images: ['3', 0], filename_prefix: 'vidax_wav2lip' },
       },
     },
   };
