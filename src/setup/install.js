@@ -58,6 +58,20 @@ function ensureConfigFiles(baseDir = process.cwd()) {
   return created;
 }
 
+function describeConfigStatus(baseDir = process.cwd()) {
+  const pairs = [
+    { example: path.join(baseDir, 'config', 'vidax.example.json'), target: path.join(stateRoot, 'config', 'vidax.json') },
+    { example: path.join(baseDir, 'config', 'lipsync.providers.example.json'), target: path.join(stateRoot, 'config', 'lipsync.providers.json') },
+    { example: path.join(baseDir, 'config', 'assets.example.json'), target: path.join(stateRoot, 'config', 'assets.json') },
+  ];
+  return pairs.map((pair) => ({
+    example: pair.example,
+    target: pair.target,
+    example_exists: fs.existsSync(pair.example),
+    present: fs.existsSync(pair.target),
+  }));
+}
+
 function ensureBundledWorkflows(baseDir = process.cwd()) {
   const created = [];
   const bundles = [
@@ -217,4 +231,28 @@ async function runInstallFlow(options = {}) {
   };
 }
 
-module.exports = { runInstallFlow, ensureStateDirs, ensureConfigFiles };
+async function runInstallTest(options = {}) {
+  const { skipDoctor = false, assetsPath, requirePython = false } = options;
+  const installComfyNodes = parseBool(options.installComfyNodes, parseBool(process.env.VA_INSTALL_COMFY_NODES, true));
+  if (!skipDoctor) {
+    await assertDoctor({ requirePython, skip_comfyui: installComfyNodes === true });
+  }
+  const configStatus = describeConfigStatus();
+  const manifestPath = assetsPath || resolveAssetsConfigPath();
+  const assetsSummary = await ensureAllAssets(manifestPath, stateRoot, { install: false, strict: false });
+  const configsOk = configStatus.every((c) => c.present || !c.example_exists);
+  const ok = configsOk && assetsSummary.ok;
+  const result = {
+    ok,
+    state_dir: stateRoot,
+    config_status: configStatus,
+    assets: assetsSummary,
+    install_comfy_nodes: installComfyNodes,
+  };
+  if (!ok) {
+    throw new AppError('UNSUPPORTED_FORMAT', 'install test failed; run full install', result);
+  }
+  return result;
+}
+
+module.exports = { runInstallFlow, ensureStateDirs, ensureConfigFiles, runInstallTest };
