@@ -5,6 +5,7 @@ const { promisify } = require('util');
 const { FormData } = require('undici');
 
 const streamPipeline = promisify(pipeline);
+const imageExt = ['.png', '.jpg', '.jpeg', '.webp'];
 
 class ComfyUIClient {
   constructor(config = {}) {
@@ -14,6 +15,14 @@ class ComfyUIClient {
     this.historyEndpoint = config.history_endpoint || '/history';
     this.viewEndpoint = config.view_endpoint || '/view';
     this.timeout = config.timeout_total || 60000;
+    let inputDir = config.input_dir || process.env.COMFYUI_INPUT_DIR || null;
+    if (!inputDir && process.env.COMFYUI_DIR) {
+      inputDir = path.join(process.env.COMFYUI_DIR, 'input');
+    }
+    if (!inputDir && process.platform === 'win32') {
+      inputDir = 'F:\\ComfyUI\\input';
+    }
+    this.inputDir = inputDir ? path.resolve(inputDir) : null;
   }
 
   async health() {
@@ -61,31 +70,56 @@ class ComfyUIClient {
       error.code = 'COMFYUI_UPLOAD_FAILED';
       throw error;
     }
-    const form = new FormData();
     const filename = remoteName || path.basename(localPath);
-    form.append('image', fs.createReadStream(localPath), filename);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeout);
-    try {
-      const res = await fetch(`${this.baseUrl}/upload/image`, {
-        method: 'POST',
-        body: form,
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-      if (!res.ok) {
-        const text = await res.text();
-        const error = new Error(`ComfyUI upload failed (${res.status})`);
-        error.details = text;
+    const ext = path.extname(filename).toLowerCase();
+    const copyToInput = (method = 'copy') => {
+      if (!this.inputDir) {
+        const error = new Error('ComfyUI input_dir missing for upload copy');
         error.code = 'COMFYUI_UPLOAD_FAILED';
+        error.details = { input_dir: this.inputDir, source: localPath };
         throw error;
       }
-      return { ok: true, filename };
-    } catch (err) {
-      clearTimeout(timer);
-      err.code = err.code || 'COMFYUI_UPLOAD_FAILED';
-      throw err;
+      if (!fs.existsSync(this.inputDir)) {
+        const error = new Error('ComfyUI input_dir not found for upload copy');
+        error.code = 'COMFYUI_UPLOAD_FAILED';
+        error.details = { input_dir: this.inputDir, source: localPath };
+        throw error;
+      }
+      fs.mkdirSync(this.inputDir, { recursive: true });
+      const dest = path.join(this.inputDir, filename);
+      fs.copyFileSync(localPath, dest);
+      return { ok: true, filename, method };
+    };
+    if (imageExt.includes(ext)) {
+      const form = new FormData();
+      form.append('image', fs.createReadStream(localPath), filename);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), this.timeout);
+      try {
+        const res = await fetch(`${this.baseUrl}/upload/image`, {
+          method: 'POST',
+          body: form,
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        if (!res.ok) {
+          const text = await res.text();
+          const error = new Error(`ComfyUI upload failed (${res.status})`);
+          error.details = text;
+          error.code = 'COMFYUI_UPLOAD_FAILED';
+          throw error;
+        }
+        return { ok: true, filename, method: 'http' };
+      } catch (err) {
+        clearTimeout(timer);
+        if (this.inputDir) {
+          return copyToInput('copy_fallback');
+        }
+        err.code = err.code || 'COMFYUI_UPLOAD_FAILED';
+        throw err;
+      }
     }
+    return copyToInput('copy');
   }
 
   async submitPrompt(payload) {

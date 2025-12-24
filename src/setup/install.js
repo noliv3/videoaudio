@@ -96,6 +96,27 @@ function resolveCustomNodesDir() {
   return path.join(stateRoot, 'comfyui', 'custom_nodes');
 }
 
+function resolveComfyPython() {
+  if (process.env.COMFYUI_PYTHON) {
+    return process.env.COMFYUI_PYTHON;
+  }
+  const isWin = process.platform === 'win32';
+  const comfyDir = process.env.COMFYUI_DIR;
+  if (isWin && comfyDir) {
+    const embedded = path.join(comfyDir, 'python_embeded', 'python.exe');
+    if (fs.existsSync(embedded)) return embedded;
+    const venvScript = path.join(comfyDir, 'venv', 'Scripts', 'python.exe');
+    if (fs.existsSync(venvScript)) return venvScript;
+  }
+  if (isWin && !comfyDir) {
+    const embedded = 'F:\\\\ComfyUI\\\\python_embeded\\\\python.exe';
+    if (fs.existsSync(embedded)) return embedded;
+    const venvScript = 'F:\\\\ComfyUI\\\\venv\\\\Scripts\\\\python.exe';
+    if (fs.existsSync(venvScript)) return venvScript;
+  }
+  return 'python';
+}
+
 function runGit(args, cwd) {
   const result = spawnSync('git', args, { cwd, encoding: 'utf-8' });
   if (result.error) {
@@ -119,6 +140,31 @@ function cloneOrUpdateRepo(repoUrl, targetDir) {
   }
   runGit(['-C', targetDir, 'pull'], targetDir);
   return { repo: repoUrl, path: targetDir, action: 'updated' };
+}
+
+function installRepoRequirements(repoPath, pythonExe) {
+  const reqPath = path.join(repoPath, 'requirements.txt');
+  if (!fs.existsSync(reqPath)) {
+    return null;
+  }
+  const result = spawnSync(pythonExe, ['-m', 'pip', 'install', '-r', reqPath], { cwd: repoPath, encoding: 'utf-8' });
+  if (result.error) {
+    throw new AppError('PYTHON_DEPENDENCY_FAILED', 'python invocation failed', {
+      repo: repoPath,
+      python: pythonExe,
+      error: result.error.message,
+    });
+  }
+  if (result.status !== 0) {
+    throw new AppError('PYTHON_DEPENDENCY_FAILED', 'failed to install python dependencies', {
+      repo: repoPath,
+      python: pythonExe,
+      code: result.status,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
+  }
+  return { repo: repoPath, requirements: reqPath, python: pythonExe, action: 'installed' };
 }
 
 async function downloadModel(targetPath, sources) {
@@ -148,6 +194,14 @@ async function installComfyCustomNodes() {
     const target = path.join(customNodesDir, repo.name);
     return cloneOrUpdateRepo(repo.url, target);
   });
+  const pythonExe = resolveComfyPython();
+  const pythonInstalls = [];
+  repoResults.forEach((repo) => {
+    const installResult = installRepoRequirements(repo.path, pythonExe);
+    if (installResult) {
+      pythonInstalls.push(installResult);
+    }
+  });
 
   const wav2lipDir = path.join(customNodesDir, 'ComfyUI_wav2lip', 'Wav2Lip');
   const ganPath = path.join(wav2lipDir, 'checkpoints', 'wav2lip_gan.pth');
@@ -159,7 +213,7 @@ async function installComfyCustomNodes() {
     await downloadModel(s3fdPath, defaultS3fdSources),
   ];
 
-  return { base_dir: customNodesDir, repos: repoResults, models };
+  return { base_dir: customNodesDir, repos: repoResults, models, python_installs: pythonInstalls, python_executable: pythonExe };
 }
 
 async function runInstallFlow(options = {}) {
