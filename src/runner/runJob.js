@@ -604,9 +604,16 @@ async function runJob(job, options = {}) {
           prepareDetails.frameRounding
         );
       const frameCount = Math.max(1, targetFrames || 1);
+      const postSeconds = normalizedJob.input?.end_image
+        ? prepareDetails?.bufferApplied?.post_seconds ?? postBufferSeconds ?? 0
+        : 0;
+      const postFrames =
+        normalizedJob.input?.end_image && postSeconds > 0 ? Math.ceil((prepareDetails.fps || 0) * postSeconds) : 0;
+      const comfyFrameCount =
+        normalizedJob.input?.end_image && postFrames > 0 ? Math.max(1, (targetFrames || 0) - postFrames) : frameCount;
       manifest.recordPhase(paths.manifest, 'comfyui', 'running', {
         workflow_id: workflowId,
-        chunk_size: frameCount,
+        chunk_size: comfyFrameCount,
         chunk_count: 1,
       });
       try {
@@ -630,13 +637,13 @@ async function runJob(job, options = {}) {
               startImageName: startInputName,
               audioName: audioInputName,
               fps: prepareDetails.fps,
-              frameCount,
+              frameCount: comfyFrameCount,
             })
           : buildVidaxWav2LipVideoPrompt({
               startVideoName: startInputName,
               audioName: audioInputName,
               fps: prepareDetails.fps,
-              frameCount,
+              frameCount: comfyFrameCount,
               width: renderWidth,
               height: renderHeight,
             });
@@ -655,7 +662,7 @@ async function runJob(job, options = {}) {
           workflow_id: workflowId,
           prompt_id: promptId,
           chunk_index: 0,
-          chunk_size: frameCount,
+          chunk_size: comfyFrameCount,
           chunk_count: 1,
         });
         const waitResult = await comfyuiClient.waitForCompletion(promptId, {
@@ -680,7 +687,7 @@ async function runJob(job, options = {}) {
           workflow_id: workflowId,
           prompt_id: promptId,
           chunk_index: 0,
-          chunk_size: frameCount,
+          chunk_size: comfyFrameCount,
           chunk_count: 1,
           output_kind: collectResult.output_kind,
           output_paths: collectResult.output_paths,
@@ -697,7 +704,7 @@ async function runJob(job, options = {}) {
         manifest.recordPhase(paths.manifest, 'comfyui', 'completed', {
           workflow_id: workflowId,
           prompt_id: promptId,
-          chunk_size: frameCount,
+          chunk_size: comfyFrameCount,
           chunk_count: 1,
           output_kind: collectResult.output_kind,
           output_paths: collectResult.output_paths,
