@@ -8,7 +8,7 @@ const validateJob = require('./runner/validateJob');
 const { resolveRun, stateRoot } = require('./runner/paths');
 const manifest = require('./runner/manifest');
 const { AppError, mapErrorToExitCode } = require('./errors');
-const { runInstallFlow } = require('./setup/install');
+const { runInstallFlow, runInstallTest } = require('./setup/install');
 const { runDoctor } = require('./setup/doctor');
 const { buildProduceJob } = require('./runner/produce');
 const ComfyUIClient = require('./vidax/comfyuiClient');
@@ -56,6 +56,8 @@ function exitWithError(err) {
     wrapped.details.errors.forEach((e) => {
       console.error(`${e.code || wrapped.code}: ${e.field} -> ${e.message}`);
     });
+  } else if (wrapped.details) {
+    console.error(JSON.stringify(wrapped.details, null, 2));
   }
   process.exit(code);
 }
@@ -197,6 +199,34 @@ yargs(hideBin(process.argv))
       });
       process.exit(result.ok ? 0 : result.exitCode);
     } catch (err) {
+      exitWithError(err);
+    }
+  })
+  .command('install-test', 'check install readiness without downloading assets', (y) => y
+    .option('skip-doctor', { type: 'boolean', default: false })
+    .option('comfy-nodes', { type: 'boolean', default: true, describe: 'run doctor with ComfyUI node prerequisites' }), async (args) => {
+    try {
+      const result = await runInstallTest({ skipDoctor: args.skipDoctor, installComfyNodes: args.comfyNodes });
+      console.log(`State dir: ${result.state_dir}`);
+      const missingConfigs = result.config_status.filter((c) => !c.present);
+      if (missingConfigs.length) {
+        console.log(`Missing configs: ${missingConfigs.map((c) => c.target).join(', ')}`);
+      } else {
+        console.log('All expected configs present');
+      }
+      console.log(`Assets manifest: ${result.assets.manifest}`);
+      console.log(`Assets OK: ${result.assets.ok}`);
+    } catch (err) {
+      if (err.details?.config_status) {
+        const missingConfigs = err.details.config_status.filter((c) => !c.present).map((c) => c.target);
+        if (missingConfigs.length) {
+          console.error(`Missing configs: ${missingConfigs.join(', ')}`);
+        }
+      }
+      if (err.details?.assets) {
+        console.error(`Assets manifest: ${err.details.assets.manifest}`);
+        console.error(`Assets OK: ${err.details.assets.ok}`);
+      }
       exitWithError(err);
     }
   })
