@@ -151,8 +151,8 @@ function installRepoRequirements(repoPath, pythonExe) {
 }
 
 function installComfyAudioDependencies(pythonExe) {
-  const packages = ['torchcodec', 'imageio-ffmpeg'];
-  const result = spawnSync(pythonExe, ['-m', 'pip', 'install', ...packages], { encoding: 'utf-8' });
+  const packages = ['imageio-ffmpeg', 'soundfile'];
+  const result = spawnSync(pythonExe, ['-m', 'pip', 'install', '-U', ...packages], { encoding: 'utf-8' });
   if (result.error) {
     throw new AppError('PYTHON_DEPENDENCY_FAILED', 'python invocation failed', {
       python: pythonExe,

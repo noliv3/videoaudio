@@ -48,13 +48,14 @@ function extractNodeNames(objectInfo) {
 
 function checkTorchcodec() {
   const pythonExe = resolveComfyPython();
+  // torchcodec is optional because audio I/O runs through soundfile; we do not depend on torchaudio load/save.
   try {
     const result = spawnSync(pythonExe, ['-c', 'import torchcodec'], { encoding: 'utf-8' });
     return {
       name: 'comfyui:python:torchcodec',
       ok: result.status === 0,
-      critical: true,
-      code: result.status === 0 ? null : 'PYTHON_DEPENDENCY_FAILED',
+      critical: false,
+      code: result.status === 0 ? null : 'OPTIONAL_DEPENDENCY',
       error: result.status === 0 ? null : result.stderr || result.stdout || 'torchcodec import failed',
       details: { python: pythonExe, status: result.status, stdout: result.stdout, stderr: result.stderr },
     };
@@ -62,8 +63,8 @@ function checkTorchcodec() {
     return {
       name: 'comfyui:python:torchcodec',
       ok: false,
-      critical: true,
-      code: 'PYTHON_DEPENDENCY_FAILED',
+      critical: false,
+      code: 'OPTIONAL_DEPENDENCY',
       error: err.message,
       details: { python: pythonExe },
     };
