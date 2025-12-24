@@ -69,12 +69,14 @@ function buildProduceJob(raw = {}, options = {}) {
   const fps = normalizeNumber(raw.fps, 'fps', 25);
   const seedPolicy = raw.seed_policy || 'fixed';
   const lipsyncFlag = raw.lipsync || raw.lipsync_enable;
-  const lipsyncEnable = lipsyncFlag === 'on' || lipsyncFlag === true;
+  const lipsyncEnable = lipsyncFlag === 'on' || lipsyncFlag === true || (lipsyncFlag == null && !!startFields.start_image);
   const lipsyncProvider = raw.lipsync_provider || options.lipsyncProvider || null;
   const { width, height } = resolveResolution(raw);
   const { maxWidth, maxHeight } = resolveMaxRender(raw);
   const workdir = resolveWorkdir(raw.workdir || options.defaultWorkdir, options.runId);
-  const defaultWorkflowId = startFields.start_image ? 'vidax_wav2lip_image_audio' : 'vidax_wav2lip_video_audio';
+  const defaultWorkflowId = startFields.start_image
+    ? ['vidax_faceprobe', 'vidax_motion_chunks', 'vidax_lipsync_mouthblend']
+    : ['vidax_wav2lip_video_audio'];
   const workflowId = raw.workflow_id || options.workflowId || defaultWorkflowId;
   const comfyUrl = raw.comfyui_server || raw.comfyui_url || options.comfyuiUrl || 'http://127.0.0.1:8188';
   const finalName = raw.final_name || raw.output_name || 'fertig.mp4';
@@ -101,7 +103,7 @@ function buildProduceJob(raw = {}, options = {}) {
     determinism: { fps, audio_master: true, frame_rounding: 'ceil' },
     comfyui: {
       server: comfyUrl,
-      workflow_ids: [workflowId],
+      workflow_ids: Array.isArray(workflowId) ? workflowId : [workflowId],
       enable: comfyuiEnabled,
       seed_policy: seedPolicy,
       seed: raw.seed != null ? raw.seed : undefined,

@@ -47,6 +47,12 @@ function buildPaths(job, runId) {
   const finalName = job.output.final_name || 'final.mp4';
   const comfyuiDir = path.join(base, 'comfyui');
   const lipsyncDir = path.join(base, 'lipsync');
+  const faceprobeDir = path.join(base, 'faceprobe');
+  const motionDir = path.join(base, 'motion');
+  const motionFramesDir = path.join(motionDir, 'frames');
+  const mouthBlendDir = path.join(base, 'mouthblend');
+  const mouthBlendFramesDir = path.join(mouthBlendDir, 'frames');
+  const faceprobeDebugDir = path.join(faceprobeDir, 'debug');
   const framesDir = path.join(base, 'frames');
   const tempDir = path.join(base, 'temp');
   return {
@@ -60,6 +66,12 @@ function buildPaths(job, runId) {
     comfyuiOutputVideo: path.join(comfyuiDir, 'comfyui_video.mp4'),
     lipsyncDir,
     lipsyncOutputVideo: path.join(lipsyncDir, 'output.mp4'),
+    faceprobeDir,
+    faceprobeDebugDir,
+    motionDir,
+    motionFramesDir,
+    mouthBlendDir,
+    mouthBlendFramesDir,
     framesDir,
     tempDir,
     paddedAudio: path.join(tempDir, 'padded_audio.m4a'),

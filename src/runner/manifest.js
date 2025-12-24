@@ -35,6 +35,9 @@ function baseManifest(job, runId) {
     buffer_applied: null,
     fps,
     target_frames: null,
+    face_meta: null,
+    motion_meta: null,
+    lipsync_meta: null,
     effective_params: job || {},
     versions: {
       runner: '0.1.0',
@@ -175,6 +178,27 @@ function computeTargetFrames(durationSeconds, fps, rounding = 'ceil') {
   return Math.ceil(frames);
 }
 
+function recordFaceMeta(manifestPath, meta = null) {
+  return updateManifest(manifestPath, (m) => {
+    m.face_meta = meta;
+    return m;
+  });
+}
+
+function recordMotionMeta(manifestPath, meta = null) {
+  return updateManifest(manifestPath, (m) => {
+    m.motion_meta = meta;
+    return m;
+  });
+}
+
+function recordLipsyncMeta(manifestPath, meta = null) {
+  return updateManifest(manifestPath, (m) => {
+    m.lipsync_meta = meta;
+    return m;
+  });
+}
+
 module.exports = {
   createDraft,
   markStarted,
@@ -184,4 +208,7 @@ module.exports = {
   recordVersions,
   readManifest,
   computeTargetFrames,
+  recordFaceMeta,
+  recordMotionMeta,
+  recordLipsyncMeta,
 };

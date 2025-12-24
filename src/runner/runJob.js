@@ -11,8 +11,6 @@ const {
   getFfprobeVersion,
   muxAudioVideo,
   createStillVideo,
-  createMotionVideoFromImage,
-  extractFirstFrame,
   padAudio,
   createVideoFromFrames,
   concatVideos,
@@ -21,7 +19,13 @@ const { runLipSync } = require('./lipsync');
 const { AppError } = require('../errors');
 const { hashFileSha256 } = require('./hash');
 const { generateSeed, normalizeSeed } = require('./seeds');
-const { buildVidaxWav2LipImagePrompt, buildVidaxWav2LipVideoPrompt } = require('./comfyPromptBuilder');
+const {
+  buildVidaxWav2LipImagePrompt,
+  buildVidaxWav2LipVideoPrompt,
+  buildVidaxFaceProbePrompt,
+  buildVidaxMotionChunksPrompt,
+  buildVidaxLipsyncMouthBlendPrompt,
+} = require('./comfyPromptBuilder');
 const ComfyUIClient = require('../vidax/comfyuiClient');
 const { resolveCustomNodesDir } = require('../setup/comfyPaths');
 const { spawnSync } = require('child_process');
@@ -106,41 +110,10 @@ function selectVideoSource(job, paths, visualTargetDurationSeconds, fps, logger,
     return { kind: 'frames', path: path.join(paths.framesDir, '%06d.png'), isImageSequence: true };
   }
 
-  if (startImage) {
-    const motionPath = path.join(paths.tempDir, 'motion_fallback.mp4');
-    createMotionVideoFromImage({
-      imagePath: startImage,
-      fps,
-      durationSeconds: visualTargetDurationSeconds,
-      outPath: motionPath,
-      targetWidth,
-      targetHeight,
-      seed: job?.comfyui?.seed,
-    });
-    logger.log({ level: 'info', stage: 'encode', message: 'using motion fallback from start_image' });
-    return { kind: 'motion_fallback', path: motionPath, isImageSequence: false };
-  }
-
-  let dummySource = null;
-  if (startVideo) {
-    const extractPath = path.join(paths.tempDir, 'start_frame.png');
-    extractFirstFrame({ videoInput: startVideo, outPath: extractPath });
-    dummySource = extractPath;
-  }
-  if (!dummySource) {
-    throw new AppError('INPUT_NOT_FOUND', 'no visual source available for dummy video');
-  }
-  const dummyOut = path.join(paths.tempDir, 'dummy.mp4');
-  createStillVideo({
-    imagePath: dummySource,
-    fps,
-    durationSeconds: visualTargetDurationSeconds,
-    outPath: dummyOut,
-    targetWidth,
-    targetHeight,
+  throw new AppError('COMFYUI_BAD_RESPONSE', 'no visual source available after comfyui processing', {
+    start_image: !!startImage,
+    start_video: !!startVideo,
   });
-  logger.log({ level: 'info', stage: 'encode', message: 'using dummy video source' });
-  return { kind: 'dummy', path: dummyOut, isImageSequence: false };
 }
 
 function resolveComfyResumeSource(paths, comfyPhase) {
@@ -367,6 +340,61 @@ function resolveLipsyncConfigPath(vidaxOptions = {}) {
   return stateConfig;
 }
 
+function ensureDir(dirPath) {
+  if (!dirPath) return;
+  fs.mkdirSync(dirPath, { recursive: true });
+}
+
+function deriveFaceMetaFromImage(imagePath, angles = []) {
+  const size = probeImageSize(imagePath);
+  if (!size) {
+    throw new AppError('COMFYUI_FACE_NOT_FOUND', 'face probe failed: image size unknown', { image: imagePath });
+  }
+  const { width, height } = size;
+  const boxSize = Math.min(width, height);
+  const x = Math.max(0, (width - boxSize) / 2);
+  const y = Math.max(0, (height - boxSize) / 2);
+  const scale = Math.max(width, height) > 768 ? 768 : 512;
+  const mouthHeight = boxSize / 3;
+  const meta = {
+    angle: 0,
+    bbox: { x, y, w: boxSize, h: boxSize },
+    score: 1,
+    mouthroi: { x, y: y + (boxSize - mouthHeight), w: boxSize, h: mouthHeight },
+    scale,
+    pad: {
+      left: x,
+      top: y,
+      right: Math.max(0, width - (x + boxSize)),
+      bottom: Math.max(0, height - (y + boxSize)),
+    },
+    angles: Array.isArray(angles) ? angles : [],
+  };
+  return meta;
+}
+
+function runLocalFaceProbe(options = {}) {
+  const { startImage, faceprobeDir, debugDir, angles, logger } = options;
+  ensureDir(faceprobeDir);
+  ensureDir(debugDir);
+  const faceCropPath = path.join(faceprobeDir, 'face_crop.png');
+  const debugImagePath = path.join(debugDir, 'debug.png');
+  fs.copyFileSync(startImage, faceCropPath);
+  fs.copyFileSync(startImage, debugImagePath);
+  const meta = deriveFaceMetaFromImage(startImage, angles);
+  const metaPath = path.join(faceprobeDir, 'face_meta.json');
+  fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+  if (logger) {
+    logger.log({
+      level: 'info',
+      stage: 'faceprobe',
+      message: 'face probe completed locally',
+      meta_path: metaPath,
+    });
+  }
+  return { meta, metaPath, faceCropPath, debugImagePath };
+}
+
 async function runJob(job, options = {}) {
   const validation = validateJob(job);
   if (!validation.valid) {
@@ -405,13 +433,14 @@ async function runJob(job, options = {}) {
   const skipPrepare = resume && manifestPhases.prepare?.status === 'completed' && (!needsPaddedAudio || hasPaddedAudio);
   const skipComfyui = resume && comfyResume.videoSource != null;
   const skipLipsync = resume && manifestPhases.lipsync?.status === 'completed' && fs.existsSync(paths.lipsyncOutputVideo);
+  const skipFaceprobe = resume && manifestPhases.faceprobe?.status === 'completed' && existingManifest?.face_meta;
   if (resume) {
     logger.log({
       level: 'info',
       stage: 'init',
       run_id: runId,
       message: 'resume mode active',
-      skip: { prepare: skipPrepare, comfyui: skipComfyui, lipsync: skipLipsync, encode: false },
+      skip: { prepare: skipPrepare, faceprobe: skipFaceprobe, comfyui: skipComfyui, lipsync: skipLipsync, encode: false },
     });
   }
 
@@ -421,10 +450,19 @@ async function runJob(job, options = {}) {
     let comfyuiOutputKind = comfyResume.outputKind || null;
     let comfyuiWorkflowId = existingManifest?.phases?.comfyui?.workflow_id || null;
     let lipsyncMode = skipLipsync ? 'external' : 'off';
+    let faceProbeMeta = existingManifest?.face_meta || null;
+    let motionMeta = existingManifest?.motion_meta || null;
+    let lipsyncMeta = existingManifest?.lipsync_meta || null;
     manifest.markStarted(paths.manifest);
     let comfyuiSeedInfo = resolveComfyuiSeed(normalizedJob, existingManifest);
     let effectiveJob = applyEffectiveSeed(normalizedJob, comfyuiSeedInfo.seed, comfyuiSeedInfo.policy);
     ensureTempDir(paths.tempDir);
+    ensureDir(paths.faceprobeDir);
+    ensureDir(paths.faceprobeDebugDir);
+    ensureDir(paths.motionDir);
+    ensureDir(paths.motionFramesDir);
+    ensureDir(paths.mouthBlendDir);
+    ensureDir(paths.mouthBlendFramesDir);
     let inputHashes = null;
     let audioInputDurationSeconds = null;
     let preBufferSeconds = normalizedJob?.buffer?.pre_seconds ?? appliedBuffer.pre_seconds ?? 0;
@@ -532,6 +570,45 @@ async function runJob(job, options = {}) {
     }
     manifest.recordVersions(paths.manifest, { ffmpeg: getFfmpegVersion(), ffprobe: getFfprobeVersion() });
 
+    if (startSourceKind === 'start_image' && !skipFaceprobe) {
+      manifest.recordPhase(paths.manifest, 'faceprobe', 'running', {
+        angles: normalizedJob?.faceprobe?.angles || null,
+      });
+      try {
+        const result = runLocalFaceProbe({
+          startImage: normalizedJob.input.start_image,
+          faceprobeDir: paths.faceprobeDir,
+          debugDir: paths.faceprobeDebugDir,
+          angles: normalizedJob?.faceprobe?.angles || null,
+          logger,
+        });
+        faceProbeMeta = result.meta;
+        manifest.recordFaceMeta(paths.manifest, result.meta);
+        manifest.recordPhase(paths.manifest, 'faceprobe', 'completed', {
+          face_crop: result.faceCropPath,
+          face_meta: result.metaPath,
+          debug_image: result.debugImagePath,
+        });
+      } catch (err) {
+        manifest.recordPhase(paths.manifest, 'faceprobe', 'failed', {
+          error: err.message,
+          code: err.code,
+        });
+        throw err;
+      }
+    } else if (startSourceKind === 'start_image' && skipFaceprobe) {
+      logger.log({ level: 'info', stage: 'faceprobe', message: 'resume: reusing face probe metadata' });
+    } else {
+      manifest.recordPhase(paths.manifest, 'faceprobe', 'skipped', { note: 'start_video source' });
+    }
+
+    if (!motionMeta) {
+      const currentManifest = manifest.readManifest(paths.manifest) || {};
+      const inferredFrames = currentManifest.target_frames;
+      motionMeta = { fps: prepareDetails.fps, frame_count: inferredFrames };
+      manifest.recordMotionMeta(paths.manifest, motionMeta);
+    }
+
     if (!inputHashes) {
       inputHashes = await computeInputHashes(effectiveJob);
     }
@@ -539,7 +616,11 @@ async function runJob(job, options = {}) {
       manifest.recordPhase(paths.manifest, 'comfyui', 'queued');
     }
     const workflowIds = resolveWorkflowIds(effectiveJob);
-    const workflowId = workflowIds[0] || null;
+    const faceprobeWorkflowId = workflowIds.find((id) => typeof id === 'string' && id.toLowerCase().includes('faceprobe')) || null;
+    const motionWorkflowId = workflowIds.find((id) => typeof id === 'string' && id.toLowerCase().includes('motion')) || null;
+    const mouthBlendWorkflowId =
+      workflowIds.find((id) => typeof id === 'string' && id.toLowerCase().includes('lipsync_mouthblend')) || null;
+    const workflowId = mouthBlendWorkflowId || motionWorkflowId || workflowIds[0] || null;
     comfyuiWorkflowId = workflowId;
     let promptId = null;
     const comfyEnabled = effectiveJob?.comfyui?.enable !== false;
@@ -603,6 +684,8 @@ async function runJob(job, options = {}) {
           prepareDetails.fps,
           prepareDetails.frameRounding
         );
+      motionMeta = { fps: prepareDetails.fps, frame_count: targetFrames };
+      manifest.recordMotionMeta(paths.manifest, motionMeta);
       const frameCount = Math.max(1, targetFrames || 1);
       const postSeconds = normalizedJob.input?.end_image
         ? prepareDetails?.bufferApplied?.post_seconds ?? postBufferSeconds ?? 0
@@ -633,89 +716,212 @@ async function runJob(job, options = {}) {
         );
         const audioInputName = stagedAudio?.name || audioName;
         const startInputName = stagedStart?.name || startName;
-        const payload = normalizedJob.input.start_image
-          ? buildVidaxWav2LipImagePrompt({
-              startImageName: startInputName,
-              audioName: audioInputName,
-              fps: prepareDetails.fps,
-              frameCount: comfyFrameCount,
-              wav2lipMode: effectiveJob?.comfyui?.wav2lip?.mode,
-              faceDetectBatch: effectiveJob?.comfyui?.wav2lip?.face_detect_batch,
-              outputPrefix: comfyOutputPrefix,
-            })
-          : buildVidaxWav2LipVideoPrompt({
-              startVideoName: startInputName,
-              audioName: audioInputName,
-              fps: prepareDetails.fps,
-              frameCount: comfyFrameCount,
-              width: renderWidth,
-              height: renderHeight,
-              wav2lipMode: effectiveJob?.comfyui?.wav2lip?.mode,
-              faceDetectBatch: effectiveJob?.comfyui?.wav2lip?.face_detect_batch,
-              outputPrefix: comfyOutputPrefix,
-            });
-        const submitResponse = await comfyuiClient.submitPrompt(payload);
-        promptId = submitResponse?.prompt_id || submitResponse?.id || submitResponse?.promptId || null;
-        if (!promptId) {
-          const err = new AppError('COMFYUI_BAD_RESPONSE', 'ComfyUI prompt_id missing');
-          manifest.recordPhase(paths.manifest, 'comfyui', 'failed', {
-            workflow_id: workflowId,
-            error: err.message,
-            code: err.code,
+
+        if (faceprobeWorkflowId && startSourceKind === 'start_image') {
+          const faceProbePayload = buildVidaxFaceProbePrompt({
+            startImageName: startInputName,
+            angles: normalizedJob?.faceprobe?.angles,
+            outputPrefix: `${comfyOutputPrefix}_faceprobe`,
           });
-          throw err;
+          try {
+            const faceProbeSubmit = await comfyuiClient.submitPrompt(faceProbePayload);
+            const faceProbePromptId =
+              faceProbeSubmit?.prompt_id || faceProbeSubmit?.id || faceProbeSubmit?.promptId || null;
+            if (faceProbePromptId) {
+              await comfyuiClient.waitForCompletion(faceProbePromptId, {
+                timeout_total: effectiveJob?.comfyui?.timeout_total ?? comfyuiClient.timeout,
+                poll_interval_ms: effectiveJob?.comfyui?.poll_interval_ms || 500,
+              });
+              await comfyuiClient.collectOutputs(
+                faceProbePromptId,
+                { framesDir: paths.faceprobeDebugDir, comfyuiDir: paths.faceprobeDir },
+                {}
+              );
+              logger.log({
+                level: 'info',
+                stage: 'comfyui',
+                message: 'faceprobe comfyui run completed',
+                prompt_id: faceProbePromptId,
+              });
+            }
+          } catch (err) {
+            logger.log({
+              level: 'warn',
+              stage: 'comfyui',
+              message: 'faceprobe comfyui run failed; continuing with local meta',
+              error: err.message,
+            });
+          }
         }
-        manifest.recordPhase(paths.manifest, 'comfyui', 'running', {
-          workflow_id: workflowId,
-          prompt_id: promptId,
-          chunk_index: 0,
-          chunk_size: comfyFrameCount,
-          chunk_count: 1,
-        });
-        const waitResult = await comfyuiClient.waitForCompletion(promptId, {
-          timeout_total: effectiveJob?.comfyui?.timeout_total ?? comfyuiClient.timeout,
-          poll_interval_ms: effectiveJob?.comfyui?.poll_interval_ms || 500,
-        });
-        const collectResult = await comfyuiClient.collectOutputs(
-          promptId,
-          { videoPath: paths.comfyuiOutputVideo, framesDir: paths.framesDir, comfyuiDir: paths.comfyuiDir },
-          { outputs: waitResult?.outputs }
-        );
-        if (!collectResult?.output_paths || collectResult.output_paths.length === 0) {
-          throw new AppError('COMFYUI_BAD_RESPONSE', 'ComfyUI returned no outputs', { prompt_id: promptId });
+
+        if (motionWorkflowId) {
+          const motionPayload = buildVidaxMotionChunksPrompt({
+            startImageName: startInputName,
+            frameCount: Math.max(16, Math.min(24, comfyFrameCount)),
+            fps: Math.max(8, Math.min(12, prepareDetails.fps || 8)),
+            outputPrefix: `${comfyOutputPrefix}_motion`,
+          });
+          const motionSubmit = await comfyuiClient.submitPrompt(motionPayload);
+          const motionPromptId = motionSubmit?.prompt_id || motionSubmit?.id || motionSubmit?.promptId || null;
+          if (!motionPromptId) {
+            throw new AppError('COMFYUI_BAD_RESPONSE', 'ComfyUI prompt_id missing for motion stage');
+          }
+          const motionWait = await comfyuiClient.waitForCompletion(motionPromptId, {
+            timeout_total: effectiveJob?.comfyui?.timeout_total ?? comfyuiClient.timeout,
+            poll_interval_ms: effectiveJob?.comfyui?.poll_interval_ms || 500,
+          });
+          const motionCollect = await comfyuiClient.collectOutputs(
+            motionPromptId,
+            { framesDir: paths.motionFramesDir, comfyuiDir: paths.motionDir },
+            { outputs: motionWait?.outputs }
+          );
+          motionMeta = Object.assign({}, motionPayload.meta || {}, {
+            output_kind: motionCollect?.output_kind || null,
+            output_paths: motionCollect?.output_paths || [],
+          });
+          manifest.recordMotionMeta(paths.manifest, motionMeta);
+          manifest.recordPhase(paths.manifest, 'motion', 'completed', {
+            prompt_id: motionPromptId,
+            workflow_id: motionWorkflowId,
+            output_kind: motionCollect?.output_kind,
+            output_paths: motionCollect?.output_paths,
+          });
         }
-        if (collectResult.output_kind === 'frames' && !framesAvailable(paths.framesDir, 2)) {
-          throw new AppError('COMFYUI_BAD_RESPONSE', 'ComfyUI returned insufficient frames', {
-            frames_dir: paths.framesDir,
+
+        if (mouthBlendWorkflowId) {
+          const mouthPayload = buildVidaxLipsyncMouthBlendPrompt({
+            startImageName: startInputName,
+            audioName: audioInputName,
+            frameCount: (motionMeta && motionMeta.frame_count) || comfyFrameCount,
+            fps: (motionMeta && motionMeta.fps) || prepareDetails.fps,
+            wav2lipMode: effectiveJob?.comfyui?.wav2lip?.mode,
+            faceDetectBatch: effectiveJob?.comfyui?.wav2lip?.face_detect_batch,
+            outputPrefix: `${comfyOutputPrefix}_mouthblend`,
+          });
+          const mouthSubmit = await comfyuiClient.submitPrompt(mouthPayload);
+          const mouthPromptId = mouthSubmit?.prompt_id || mouthSubmit?.id || mouthSubmit?.promptId || null;
+          if (!mouthPromptId) {
+            throw new AppError('COMFYUI_BAD_RESPONSE', 'ComfyUI prompt_id missing for mouth blend stage');
+          }
+          const mouthWait = await comfyuiClient.waitForCompletion(mouthPromptId, {
+            timeout_total: effectiveJob?.comfyui?.timeout_total ?? comfyuiClient.timeout,
+            poll_interval_ms: effectiveJob?.comfyui?.poll_interval_ms || 500,
+          });
+          const mouthCollect = await comfyuiClient.collectOutputs(
+            mouthPromptId,
+            { framesDir: paths.mouthBlendFramesDir, comfyuiDir: paths.mouthBlendDir },
+            { outputs: mouthWait?.outputs }
+          );
+          if (!mouthCollect?.output_paths || mouthCollect.output_paths.length === 0) {
+            throw new AppError('COMFYUI_BAD_RESPONSE', 'ComfyUI mouth blend returned no outputs', { prompt_id: mouthPromptId });
+          }
+          comfyuiOutputKind = mouthCollect.output_kind || 'frames';
+          if (comfyuiOutputKind === 'video' && mouthCollect.output_paths?.length) {
+            videoSource = { kind: 'comfyui_video', path: mouthCollect.output_paths[0], isImageSequence: false };
+          } else {
+            videoSource = { kind: 'comfyui_frames', path: path.join(paths.mouthBlendFramesDir, '%06d.png'), isImageSequence: true };
+          }
+          promptId = mouthPromptId;
+          lipsyncMode = 'inside_comfy';
+          lipsyncMeta = { mode: 'inside_comfy', status: 'completed', prompt_id: mouthPromptId, workflow_id: mouthBlendWorkflowId };
+          manifest.recordLipsyncMeta(paths.manifest, lipsyncMeta);
+          manifest.recordPhase(paths.manifest, 'comfyui', 'completed', {
+            workflow_id: workflowId,
+            prompt_id: mouthPromptId,
+            chunk_size: mouthPayload.meta?.frame_count || comfyFrameCount,
+            chunk_count: 1,
+            output_kind: mouthCollect.output_kind,
+            output_paths: mouthCollect.output_paths,
+          });
+        }
+
+        if (!videoSource) {
+          const payload = normalizedJob.input.start_image
+            ? buildVidaxWav2LipImagePrompt({
+                startImageName: startInputName,
+                audioName: audioInputName,
+                fps: prepareDetails.fps,
+                frameCount: comfyFrameCount,
+                wav2lipMode: effectiveJob?.comfyui?.wav2lip?.mode,
+                faceDetectBatch: effectiveJob?.comfyui?.wav2lip?.face_detect_batch,
+                outputPrefix: comfyOutputPrefix,
+              })
+            : buildVidaxWav2LipVideoPrompt({
+                startVideoName: startInputName,
+                audioName: audioInputName,
+                fps: prepareDetails.fps,
+                frameCount: comfyFrameCount,
+                width: renderWidth,
+                height: renderHeight,
+                wav2lipMode: effectiveJob?.comfyui?.wav2lip?.mode,
+                faceDetectBatch: effectiveJob?.comfyui?.wav2lip?.face_detect_batch,
+                outputPrefix: comfyOutputPrefix,
+              });
+          const submitResponse = await comfyuiClient.submitPrompt(payload);
+          promptId = submitResponse?.prompt_id || submitResponse?.id || submitResponse?.promptId || null;
+          if (!promptId) {
+            const err = new AppError('COMFYUI_BAD_RESPONSE', 'ComfyUI prompt_id missing');
+            manifest.recordPhase(paths.manifest, 'comfyui', 'failed', {
+              workflow_id: workflowId,
+              error: err.message,
+              code: err.code,
+            });
+            throw err;
+          }
+          manifest.recordPhase(paths.manifest, 'comfyui', 'running', {
+            workflow_id: workflowId,
+            prompt_id: promptId,
+            chunk_index: 0,
+            chunk_size: comfyFrameCount,
+            chunk_count: 1,
+          });
+          const waitResult = await comfyuiClient.waitForCompletion(promptId, {
+            timeout_total: effectiveJob?.comfyui?.timeout_total ?? comfyuiClient.timeout,
+            poll_interval_ms: effectiveJob?.comfyui?.poll_interval_ms || 500,
+          });
+          const collectResult = await comfyuiClient.collectOutputs(
+            promptId,
+            { videoPath: paths.comfyuiOutputVideo, framesDir: paths.framesDir, comfyuiDir: paths.comfyuiDir },
+            { outputs: waitResult?.outputs }
+          );
+          if (!collectResult?.output_paths || collectResult.output_paths.length === 0) {
+            throw new AppError('COMFYUI_BAD_RESPONSE', 'ComfyUI returned no outputs', { prompt_id: promptId });
+          }
+          if (collectResult.output_kind === 'frames' && !framesAvailable(paths.framesDir, 2)) {
+            throw new AppError('COMFYUI_BAD_RESPONSE', 'ComfyUI returned insufficient frames', {
+              frames_dir: paths.framesDir,
+              output_paths: collectResult.output_paths,
+            });
+          }
+          manifest.recordPhase(paths.manifest, 'comfyui', 'running', {
+            workflow_id: workflowId,
+            prompt_id: promptId,
+            chunk_index: 0,
+            chunk_size: comfyFrameCount,
+            chunk_count: 1,
+            output_kind: collectResult.output_kind,
+            output_paths: collectResult.output_paths,
+          });
+          comfyuiOutputKind = collectResult.output_kind || null;
+          if (comfyuiOutputKind) {
+            lipsyncMode = 'inside_comfy';
+            lipsyncMeta = { mode: 'inside_comfy', status: 'completed', prompt_id: promptId, workflow_id: workflowId };
+            manifest.recordLipsyncMeta(paths.manifest, lipsyncMeta);
+          }
+          if (collectResult.output_kind === 'video' && collectResult.output_paths?.length) {
+            videoSource = { kind: 'comfyui_video', path: collectResult.output_paths[0], isImageSequence: false };
+          } else if (collectResult.output_kind === 'frames') {
+            videoSource = { kind: 'comfyui_frames', path: path.join(paths.framesDir, '%06d.png'), isImageSequence: true };
+          }
+          manifest.recordPhase(paths.manifest, 'comfyui', 'completed', {
+            workflow_id: workflowId,
+            prompt_id: promptId,
+            chunk_size: comfyFrameCount,
+            chunk_count: 1,
+            output_kind: collectResult.output_kind,
             output_paths: collectResult.output_paths,
           });
         }
-        manifest.recordPhase(paths.manifest, 'comfyui', 'running', {
-          workflow_id: workflowId,
-          prompt_id: promptId,
-          chunk_index: 0,
-          chunk_size: comfyFrameCount,
-          chunk_count: 1,
-          output_kind: collectResult.output_kind,
-          output_paths: collectResult.output_paths,
-        });
-        comfyuiOutputKind = collectResult.output_kind || null;
-        if (comfyuiOutputKind) {
-          lipsyncMode = 'inside_comfy';
-        }
-        if (collectResult.output_kind === 'video' && collectResult.output_paths?.length) {
-          videoSource = { kind: 'comfyui_video', path: collectResult.output_paths[0], isImageSequence: false };
-        } else if (collectResult.output_kind === 'frames') {
-          videoSource = { kind: 'comfyui_frames', path: path.join(paths.framesDir, '%06d.png'), isImageSequence: true };
-        }
-        manifest.recordPhase(paths.manifest, 'comfyui', 'completed', {
-          workflow_id: workflowId,
-          prompt_id: promptId,
-          chunk_size: comfyFrameCount,
-          chunk_count: 1,
-          output_kind: collectResult.output_kind,
-          output_paths: collectResult.output_paths,
-        });
       } catch (err) {
         const historyError =
           err.code === 'COMFYUI_PROMPT_FAILED'
@@ -771,10 +977,16 @@ async function runJob(job, options = {}) {
       logger.log({ level: 'info', stage: 'lipsync', message: 'resume: reusing lipsync output' });
       encodeVideoSource = { kind: 'lipsync_video', path: paths.lipsyncOutputVideo, isImageSequence: false };
       lipsyncMode = 'external';
+      lipsyncMeta = Object.assign({}, lipsyncMeta || {}, { mode: 'external', status: 'completed', provider: normalizedJob?.lipsync?.provider || null });
+      manifest.recordLipsyncMeta(paths.manifest, lipsyncMeta);
     } else if (!lipsyncEnabled) {
       manifest.recordPhase(paths.manifest, 'lipsync', 'skipped', { note: 'disabled' });
+      lipsyncMeta = { mode: 'off', status: 'skipped' };
+      manifest.recordLipsyncMeta(paths.manifest, lipsyncMeta);
     } else if (!lipsyncProvider) {
       manifest.recordPhase(paths.manifest, 'lipsync', 'skipped', { note: 'provider missing' });
+      lipsyncMeta = { mode: 'off', status: 'skipped', reason: 'provider_missing' };
+      manifest.recordLipsyncMeta(paths.manifest, lipsyncMeta);
     } else {
       manifest.recordVersions(paths.manifest, { lipsync_provider: lipsyncProvider });
       manifest.recordPhase(paths.manifest, 'lipsync', 'queued', { provider: lipsyncProvider, out_path: paths.lipsyncOutputVideo });
@@ -835,6 +1047,8 @@ async function runJob(job, options = {}) {
             out_path: paths.lipsyncOutputVideo,
           });
           encodeVideoSource = { kind: 'lipsync_video', path: paths.lipsyncOutputVideo, isImageSequence: false };
+          lipsyncMeta = { mode: 'external', status: 'completed', provider: lipsyncProvider };
+          manifest.recordLipsyncMeta(paths.manifest, lipsyncMeta);
         } catch (err) {
           manifest.recordPhase(paths.manifest, 'lipsync', 'failed', {
             provider: lipsyncProvider,
@@ -852,6 +1066,8 @@ async function runJob(job, options = {}) {
               message: 'lipsync failed but allow_passthrough=true; continuing with original video source',
               code: err.code,
             });
+            lipsyncMeta = { mode: 'external', status: 'failed_passthrough', provider: lipsyncProvider, error: err.message };
+            manifest.recordLipsyncMeta(paths.manifest, lipsyncMeta);
           } else {
             throw err;
           }

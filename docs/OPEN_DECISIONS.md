@@ -26,3 +26,6 @@
 
 ## Endbilder
 - Stand: Endbild wird als Post-Puffer-Hold benutzt, wenn `post_seconds>0`; es gibt keine Crossfade-Option und keinen Hold ohne Post-Puffer.
+
+## Faceprobe-Erkennung
+- Aktuell erzeugt der Runner das Face-Crop/MouthROI deterministisch aus der Bildgeometrie (square pad, MouthROI im unteren Drittel) und nutzt ComfyUI nur für Debug-Saves; eine echte Detector-Integration (InsightFace/RetinaFace o.ä.) steht noch aus.

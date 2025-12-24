@@ -18,7 +18,7 @@ function validateJob(job) {
   validateOutput(job.output, errors);
   validateDeterminism(job.determinism, errors);
   validateComfy(job.comfyui, errors);
-  validateLipsync(job.lipsync, errors);
+  validateLipsync(job.lipsync, errors, job?.comfyui?.workflow_ids);
 
   return { valid: errors.length === 0, code: errors.length ? 'VALIDATION_ERROR' : null, errors };
 }
@@ -134,14 +134,16 @@ function validateComfy(comfyui, errors) {
   validateComfyParams(comfyui.params, errors);
 }
 
-function validateLipsync(lipsync, errors) {
+function validateLipsync(lipsync, errors, workflowIds) {
   if (!lipsync) return;
   if (typeof lipsync !== 'object') {
     errors.push({ field: 'lipsync', message: 'lipsync must be object', code: 'VALIDATION_ERROR' });
     return;
   }
   const enabled = lipsync.enable === true;
-  if (enabled && !lipsync.provider) {
+  const comfyWorkflows = Array.isArray(workflowIds) ? workflowIds : [];
+  const comfyMouthblend = comfyWorkflows.some((id) => typeof id === 'string' && id.toLowerCase().includes('lipsync_mouthblend'));
+  if (enabled && !lipsync.provider && !comfyMouthblend) {
     errors.push({ field: 'lipsync.provider', message: 'provider required when lipsync is enabled', code: 'VALIDATION_ERROR' });
   }
 }
