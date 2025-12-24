@@ -148,6 +148,16 @@ function muxAudioVideo({
       tolerance,
     });
   }
+  const roundedFrames = Number.isFinite(probe.videoDuration) && Number.isFinite(fps)
+    ? Math.round(probe.videoDuration * fps)
+    : null;
+  if (roundedFrames != null && roundedFrames <= 1) {
+    throw new AppError('FFMPEG_FAILED', 'muxed output contains one or fewer frames', {
+      fps,
+      video_duration: probe.videoDuration,
+      target_duration: targetDurationSeconds,
+    });
+  }
   return outPath;
 }
 

@@ -21,8 +21,8 @@
 - Fehler: `400` bei fehlgeschlagener Installation/Verification (`UNSUPPORTED_FORMAT`), `404` bei fehlender Manifest-Datei.
 
 ### GET /comfyui/health
-- Antwort `200 OK` mit `{ok:boolean, ...}` aus ComfyUI Health-Check (`/system_stats` als Default-Endpunkt, Fallback `/health`).
-- `ok=true`, sobald `/system_stats` einen `200`-Status liefert; `ok=false` wenn ComfyUI nicht erreichbar.
+- Antwort `200 OK` mit `{ok:boolean, ...}` aus dem strikten ComfyUI Health-Check (`/system_stats` als Pflicht-Endpunkt, kein `/health`-Fallback).
+- `ok=true`, sobald `/system_stats` einen `200`-Status liefert und einen Body zurückgibt; `ok=false` wenn ComfyUI nicht erreichbar.
 
 ### POST /comfyui/start
 - Startet ComfyUI falls Health nicht `ok` und `auto_start=true`.
@@ -75,4 +75,4 @@
 - Ergebnis-Status: `exit_status` mit `success|failed|partial|null` (kein `queued|running`).
 - Phasen (prepare, comfyui, stabilize, lipsync, encode) werden im Manifest mit `queued|running|skipped|completed|failed` markiert.
 - LipSync läuft real, wenn `lipsync.enable=true` und ein Provider aus `config/lipsync.providers.json` verfügbar ist; Output liegt unter `workdir/lipsync/output.mp4`, bei `allow_passthrough=true` kann `exit_status=success` bleiben obwohl die Phase `failed` ist.
-- `final.mp4`/`fertig.mp4` wird mit gepaddeter Audio-Timeline (Buffer als Stille + Post-Frame-Hold) encodiert; Drift < 1 Frame. Resume setzt `exit_status=partial`, solange kein Final existiert.
+- `final.mp4`/`fertig.mp4` wird mit gemessener gepaddeter Audio-Timeline (Buffer als Stille + Post-Frame-Hold) encodiert; Drift < 1 Frame, Ausgaben mit ≤1 Frame schlagen fehl. Resume setzt `exit_status=partial`, solange kein Final existiert.

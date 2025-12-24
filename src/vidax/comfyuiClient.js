@@ -47,10 +47,12 @@ class ComfyUIClient {
     }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeout);
-    const attemptHealth = async (endpoint) => {
+    try {
+      const endpoint = this.healthEndpoint || '/system_stats';
       const res = await fetch(`${this.baseUrl}${endpoint}`, { signal: controller.signal });
+      clearTimeout(timer);
       if (!res.ok) {
-        return { ok: false, status: res.status, statusText: res.statusText };
+        return { ok: false, status: res.status, statusText: res.statusText, endpoint };
       }
       let data = null;
       try {
@@ -58,20 +60,13 @@ class ComfyUIClient {
       } catch (err) {
         data = null;
       }
-      return { ok: true, url: this.baseUrl, status: res.status, data };
-    };
-    try {
-      const first = await attemptHealth(this.healthEndpoint);
-      if (first.ok || this.healthEndpoint === '/health') {
-        clearTimeout(timer);
-        return first;
+      if (!data) {
+        return { ok: false, status: res.status, statusText: res.statusText, endpoint, error: 'empty_body' };
       }
-      const fallback = await attemptHealth('/health');
-      clearTimeout(timer);
-      return fallback;
+      return { ok: true, url: this.baseUrl, status: res.status, data, endpoint };
     } catch (err) {
       clearTimeout(timer);
-      return { ok: false, error: err.message };
+      return { ok: false, error: err.message, endpoint: this.healthEndpoint || '/system_stats' };
     }
   }
 

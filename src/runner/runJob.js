@@ -465,6 +465,7 @@ async function runJob(job, options = {}) {
           paddedAudioDurationSeconds = visualTargetDurationSeconds;
         }
       }
+      visualTargetDurationSeconds = paddedAudioDurationSeconds ?? visualTargetDurationSeconds;
       prepareDetails = {
         audioInputDurationSeconds,
         audioDurationSeconds: paddedAudioDurationSeconds,
@@ -508,6 +509,7 @@ async function runJob(job, options = {}) {
       renderWidth = clamped.width;
       renderHeight = clamped.height;
       effectiveAudioPath = needsPaddedAudio && hasPaddedAudio ? paths.paddedAudio : normalizedJob.input.audio;
+      visualTargetDurationSeconds = paddedAudioDurationSeconds ?? visualTargetDurationSeconds;
       prepareDetails = {
         audioInputDurationSeconds,
         audioDurationSeconds: paddedAudioDurationSeconds,
