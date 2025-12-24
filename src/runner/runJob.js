@@ -415,9 +415,9 @@ async function runJob(job, options = {}) {
     });
   }
 
+  let encodeStarted = null;
   try {
     let partialReason = null;
-    let encodeStarted = false;
     let comfyuiOutputKind = comfyResume.outputKind || null;
     let comfyuiWorkflowId = existingManifest?.phases?.comfyui?.workflow_id || null;
     let lipsyncMode = skipLipsync ? 'external' : 'off';
@@ -879,8 +879,14 @@ async function runJob(job, options = {}) {
       encodeVideoSource = { kind: `${encodeVideoSource.kind}_with_end`, path: concatPath, isImageSequence: false };
     }
 
-    manifest.recordPhase(paths.manifest, 'encode', 'running', { fps: prepareDetails.fps, render_width: renderWidth, render_height: renderHeight });
-    encodeStarted = true;
+    encodeStarted = Date.now();
+    const encodeStartIso = new Date(encodeStarted).toISOString();
+    manifest.recordPhase(paths.manifest, 'encode', 'running', {
+      fps: prepareDetails.fps,
+      render_width: renderWidth,
+      render_height: renderHeight,
+      started_at: encodeStartIso,
+    });
     muxAudioVideo({
       videoInput: encodeVideoSource.path,
       audioInput: effectiveAudioPath,
@@ -895,6 +901,7 @@ async function runJob(job, options = {}) {
     const videoSourceLabel = encodeVideoSource.kind.endsWith('_with_end')
       ? encodeVideoSource.kind.replace(/_with_end$/, '')
       : encodeVideoSource.kind;
+    const encodeCompletedAt = Date.now();
     manifest.recordPhase(paths.manifest, 'encode', 'completed', {
       fps: prepareDetails.fps,
       video_source: videoSourceLabel,
@@ -903,6 +910,9 @@ async function runJob(job, options = {}) {
       audio_path: effectiveAudioPath,
       render_width: renderWidth,
       render_height: renderHeight,
+      started_at: encodeStartIso,
+      completed_at: new Date(encodeCompletedAt).toISOString(),
+      duration_ms: encodeCompletedAt - encodeStarted,
       video_source_detail: {
         start_source: startSourceKind,
         comfyui_workflow_id: comfyuiWorkflowId,
@@ -931,8 +941,15 @@ async function runJob(job, options = {}) {
 
     return { runId, status: 'success', paths };
   } catch (err) {
-    if (encodeStarted) {
-      manifest.recordPhase(paths.manifest, 'encode', 'failed', { error: err.message, code: err.code });
+    if (encodeStarted != null) {
+      const encodeFailedAt = Date.now();
+      manifest.recordPhase(paths.manifest, 'encode', 'failed', {
+        error: err.message,
+        code: err.code,
+        started_at: encodeStarted != null ? new Date(encodeStarted).toISOString() : null,
+        completed_at: new Date(encodeFailedAt).toISOString(),
+        duration_ms: encodeStarted != null ? encodeFailedAt - encodeStarted : null,
+      });
     }
     manifest.markFinished(paths.manifest, 'failed', {
       error: {
