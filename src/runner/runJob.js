@@ -191,12 +191,17 @@ function resolveWorkflowIds(job) {
   return job.comfyui.workflow_ids.filter(Boolean);
 }
 
-function resolveComfyuiClient(job, existingClient) {
+function resolveComfyuiClient(job, existingClient, vidaxOptions = {}) {
   if (existingClient) return existingClient;
   const comfyEnabled = job?.comfyui?.enable !== false;
   const workflowIds = resolveWorkflowIds(job);
   if (!comfyEnabled || !workflowIds.length) return null;
   const url = job?.comfyui?.server || 'http://127.0.0.1:8188';
+  let inputDir = null;
+  const comfyCwd = vidaxOptions?.processManager?.config?.comfyui?.cwd;
+  if (comfyCwd) {
+    inputDir = path.join(comfyCwd, 'input');
+  }
   const clientConfig = {
     url,
     health_endpoint: job?.comfyui?.health_endpoint,
@@ -204,6 +209,7 @@ function resolveComfyuiClient(job, existingClient) {
     history_endpoint: job?.comfyui?.history_endpoint,
     view_endpoint: job?.comfyui?.view_endpoint,
     timeout_total: job?.comfyui?.timeout_total,
+    input_dir: inputDir,
   };
   return new ComfyUIClient(clientConfig);
 }
@@ -311,7 +317,7 @@ async function runJob(job, options = {}) {
   const existingManifest = resume ? manifest.readManifest(paths.manifest) : null;
   const runId = existingManifest?.run_id || initialRunId;
   paths.runId = runId;
-  let comfyuiClient = resolveComfyuiClient(normalizedJob, options?.vidax?.comfyuiClient);
+  let comfyuiClient = resolveComfyuiClient(normalizedJob, options?.vidax?.comfyuiClient, options?.vidax);
   const processManager = options?.vidax?.processManager;
   prepareWorkdir(paths);
   registerRun(runId, paths.base);
@@ -406,7 +412,7 @@ async function runJob(job, options = {}) {
         manifest.recordPhase(paths.manifest, 'comfyui', 'failed', { workflow_id: workflowId, error: err.message, code: err.code });
         throw err;
       }
-      comfyuiClient = resolveComfyuiClient(effectiveJob, comfyuiClient);
+      comfyuiClient = resolveComfyuiClient(effectiveJob, comfyuiClient, options?.vidax);
       if (!comfyuiClient) {
         const err = new AppError('COMFYUI_UNAVAILABLE', 'ComfyUI client unavailable');
         manifest.recordPhase(paths.manifest, 'comfyui', 'failed', { workflow_id: workflowId, error: err.message, code: err.code });
@@ -437,18 +443,23 @@ async function runJob(job, options = {}) {
         ? path.basename(normalizedJob.input.start_image)
         : path.basename(normalizedJob.input.start_video);
       try {
-        await comfyuiClient.uploadFile(effectiveAudioPath, audioRemoteName);
-        await comfyuiClient.uploadFile(normalizedJob.input.start_image || normalizedJob.input.start_video, startRemoteName);
+        const upAudio = await comfyuiClient.uploadFile(effectiveAudioPath, audioRemoteName);
+        const upStart = await comfyuiClient.uploadFile(
+          normalizedJob.input.start_image || normalizedJob.input.start_video,
+          startRemoteName
+        );
+        const audioName = upAudio?.filename || audioRemoteName;
+        const startName = upStart?.filename || startRemoteName;
         const payload = normalizedJob.input.start_image
           ? buildVidaxWav2LipImagePrompt({
-              startImageName: startRemoteName,
-              audioName: audioRemoteName,
+              startImageName: startName,
+              audioName: audioName,
               fps: prepareDetails.fps,
               frameCount,
             })
           : buildVidaxWav2LipVideoPrompt({
-              startVideoName: startRemoteName,
-              audioName: audioRemoteName,
+              startVideoName: startName,
+              audioName: audioName,
               fps: prepareDetails.fps,
               frameCount,
               width: renderWidth,
@@ -517,7 +528,7 @@ async function runJob(job, options = {}) {
     }
 
     manifest.recordPhase(paths.manifest, 'stabilize', 'skipped');
-    const lipsyncEnabled = normalizedJob?.lipsync?.enable !== false;
+    const lipsyncEnabled = normalizedJob?.lipsync?.enable === true;
     const lipsyncProvider = normalizedJob?.lipsync?.provider || null;
     const allowPassthrough = normalizedJob?.lipsync?.params?.allow_passthrough === true;
     if (!videoSource) {

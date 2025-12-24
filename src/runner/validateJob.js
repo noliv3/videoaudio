@@ -140,7 +140,8 @@ function validateLipsync(lipsync, errors) {
     errors.push({ field: 'lipsync', message: 'lipsync must be object', code: 'VALIDATION_ERROR' });
     return;
   }
-  if (lipsync.enable !== false && !lipsync.provider) {
+  const enabled = lipsync.enable === true;
+  if (enabled && !lipsync.provider) {
     errors.push({ field: 'lipsync.provider', message: 'provider required when lipsync is enabled', code: 'VALIDATION_ERROR' });
   }
   if (lipsync.enable === false && lipsync.provider) {
