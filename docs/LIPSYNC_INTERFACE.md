@@ -21,6 +21,4 @@
 
 ## Fallback-Regeln
 - `lipsync.enable=false` → Phase `skipped`; bei `lipsync.enable=true` ohne Provider greift die Validierung (`VALIDATION_ERROR`). Encode nutzt bei Skip die ursprüngliche Videoquelle.
-- Providerfehler:
-  - `params.allow_passthrough=true`: Phase `failed`, Encode läuft mit ursprünglicher Quelle weiter, `exit_status=success`, Manifest führt den Fehler und den Passthrough-Hinweis.
-  - sonst: `exit_status=failed`.
+- Providerfehler oder fehlende LipSync-Frames degradieren den Run: Phase `failed`, Manifest markiert `degraded=true` und `degraded_reason=LIPSYNC_FAILED`, Encode läuft mit der Basisquelle (ComfyUI-Output falls vorhanden, sonst Motion-Fallback) weiter, unabhängig von `allow_passthrough`.

@@ -44,7 +44,8 @@ function readManifest(manifestPath) {
   }
   try {
     const raw = fs.readFileSync(manifestPath, 'utf-8');
-    const data = JSON.parse(raw);
+    const cleaned = raw.startsWith('\ufeff') ? raw.slice(1) : raw;
+    const data = JSON.parse(cleaned);
     return data;
   } catch (err) {
     throw new AppError('VALIDATION_ERROR', 'invalid assets manifest', { manifest: manifestPath, error: err.message });
@@ -182,7 +183,7 @@ async function installAsset(asset, policy, stateDir, options = {}) {
     return { id: asset.id, path: paths.destPath, status: 'ok', action: 'present', hash: existing.hash || null };
   }
   if (existing.status === 'hash_mismatch' && policy.on_hash_mismatch === 'fail') {
-    throw new AppError('UNSUPPORTED_FORMAT', 'asset hash mismatch', { asset: asset.id, path: paths.destPath, expected: asset.sha256, actual: existing.hash });
+    throw new AppError('HASH_MISMATCH', 'asset hash mismatch', { asset: asset.id, path: paths.destPath, expected: asset.sha256, actual: existing.hash });
   }
   if (existing.status === 'missing' && policy.on_missing !== 'download') {
     throw new AppError('INPUT_NOT_FOUND', 'asset missing', { asset: asset.id, path: paths.destPath });
@@ -192,7 +193,7 @@ async function installAsset(asset, policy, stateDir, options = {}) {
   await downloadTo(asset.url, downloadTarget, { allowInsecure: policy.allow_insecure_http, baseDir });
   const downloadedHash = await sha256File(downloadTarget);
   if (asset.sha256 && downloadedHash !== asset.sha256) {
-    throw new AppError('UNSUPPORTED_FORMAT', 'asset hash mismatch after download', { asset: asset.id, expected: asset.sha256, actual: downloadedHash });
+    throw new AppError('HASH_MISMATCH', 'asset hash mismatch after download', { asset: asset.id, expected: asset.sha256, actual: downloadedHash });
   }
   if (asset.unpack) {
     await unpackZip(downloadTarget, paths.destPath);

@@ -27,5 +27,9 @@
 ## Endbilder
 - Stand: Endbild wird als Post-Puffer-Hold benutzt, wenn `post_seconds>0`; es gibt keine Crossfade-Option und keinen Hold ohne Post-Puffer.
 
+## Degraded Output
+- Stand: Läufe schreiben immer ein `fertig.mp4`; fehlen ComfyUI-/LipSync-Frames oder schlagen Prompts fehl, wird ein Motion-Basisvideo aus dem Startbild (Zoompan) bzw. das Startvideo encodiert, Manifest markiert `degraded=true` mit Codes wie `COMFYUI_OUTPUTS_MISSING`/`LIPSYNC_FAILED`.
+- Offen: Konfigurierbare Bewegungsprofile für den Zoompan-Clip und optionale Wiederholungsversuche für ComfyUI/LipSync sind noch nicht spezifiziert.
+
 ## Faceprobe-Erkennung
 - Aktuell erzeugt der Runner das Face-Crop/MouthROI deterministisch aus der Bildgeometrie (square pad, MouthROI im unteren Drittel) und nutzt ComfyUI nur für Debug-Saves; eine echte Detector-Integration (InsightFace/RetinaFace o.ä.) steht noch aus.

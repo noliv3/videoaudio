@@ -55,6 +55,7 @@ function buildPaths(job, runId) {
   const faceprobeDebugDir = path.join(faceprobeDir, 'debug');
   const framesDir = path.join(base, 'frames');
   const tempDir = path.join(base, 'temp');
+  const motionBaseVideo = path.join(base, 'motion_base.mp4');
   return {
     runId,
     base,
@@ -74,6 +75,7 @@ function buildPaths(job, runId) {
     mouthBlendFramesDir,
     framesDir,
     tempDir,
+    motionBaseVideo,
     paddedAudio: path.join(tempDir, 'padded_audio.m4a'),
     preLipsyncVideo: path.join(tempDir, 'pre_lipsync.mp4'),
     final: path.join(base, finalName),
