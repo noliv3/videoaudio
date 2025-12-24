@@ -19,6 +19,7 @@ function mapErrorToExitCode(code) {
     case 'COMFYUI_UNAVAILABLE':
     case 'COMFYUI_MISSING_NODES':
     case 'COMFYUI_PROMPT_FAILED':
+    case 'COMFYUI_FACE_NOT_FOUND':
       return 30;
     case 'LIPSYNC_FAILED':
       return 40;

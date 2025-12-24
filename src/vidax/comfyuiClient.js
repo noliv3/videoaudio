@@ -431,10 +431,15 @@ class ComfyUIClient {
       const hasMedia =
         (outputs.images && Array.isArray(outputs.images)) || (outputs.videos && Array.isArray(outputs.videos));
       const hasKindUrl = outputs.kind && outputs.url;
+      const keyList = Object.keys(outputs);
+      const mapLike = keyList.length > 0 && keyList.every((k) => /^[0-9]+$/.test(k) || typeof outputs[k] === 'object');
       if (!hasMedia && !hasKindUrl) {
         return Object.values(outputs).flatMap((item) =>
           this.normalizeOutputs(item?.outputs || item?.output || item || [])
         );
+      }
+      if (mapLike) {
+        return keyList.flatMap((key) => this.normalizeOutputs(outputs[key]));
       }
     }
     const collected = [];
