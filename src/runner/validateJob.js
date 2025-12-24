@@ -144,9 +144,6 @@ function validateLipsync(lipsync, errors) {
   if (enabled && !lipsync.provider) {
     errors.push({ field: 'lipsync.provider', message: 'provider required when lipsync is enabled', code: 'VALIDATION_ERROR' });
   }
-  if (lipsync.enable === false && lipsync.provider) {
-    errors.push({ field: 'lipsync.provider', message: 'provider ignored when disabled', code: 'VALIDATION_ERROR' });
-  }
 }
 
 function validateBuffer(buffer, errors) {

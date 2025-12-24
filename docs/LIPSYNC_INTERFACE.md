@@ -3,7 +3,7 @@
 ## Provider-Registry
 - Konfiguration via `VA_STATE_DIR/state/config/lipsync.providers.json` (oder `state_dir` aus `vidax.json`); Fallback auf Repo `config/lipsync.providers.json`. Format: Mapping `provider -> { command, args_template[] }`.
 - `args_template` darf `{audio}`, `{video}`, `{out}` enthalten; zusätzliche `params` werden als `--key=value` (primitive Werte) angehängt.
-- Fehlender oder unbekannter Provider → `VALIDATION_ERROR`.
+- Fehlender Provider ist nur bei `lipsync.enable=true` ein Fehler; unbekannte Provider-Namen bleiben `VALIDATION_ERROR`.
 
 ## Standardisierte Inputs
 - Videoquelle: bevorzugt `workdir/comfyui/output.mp4`, sonst temporäres `workdir/temp/pre_lipsync.mp4` (aus Frames/Dummy gerendert).
@@ -20,7 +20,7 @@
 - Exit-Code ≠ 0 → `LIPSYNC_FAILED`.
 
 ## Fallback-Regeln
-- `lipsync.enable=false` oder fehlender Provider → Phase `skipped`, Encode nutzt ursprüngliche Videoquelle.
+- `lipsync.enable=false` → Phase `skipped`; bei `lipsync.enable=true` ohne Provider greift die Validierung (`VALIDATION_ERROR`). Encode nutzt bei Skip die ursprüngliche Videoquelle.
 - Providerfehler:
   - `params.allow_passthrough=true`: Phase `failed`, Encode läuft mit ursprünglicher Quelle weiter, `exit_status=success`, Manifest führt den Fehler und den Passthrough-Hinweis.
   - sonst: `exit_status=failed`.

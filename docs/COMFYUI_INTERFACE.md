@@ -5,19 +5,19 @@
 - Quellen: Audio + Startbild oder Startvideo; Prompt/Negative sind optional und werden vom Default-Graph ignoriert.
 - Auflösung: aus Start-Bild/-Video via ffprobe abgeleitet, mod2, geklemmt auf `max_width`/`max_height` (Default 854x480); Flags/Params können enger begrenzen.
 - Frame-Anzahl: `target_frames` (Audio + Buffer, ceil gerundet) wird als `frame_count` in den Graph gesetzt (`chunk_size=target_frames`, `chunk_count=1`). `frame_rate` entspricht `determinism.fps`.
-- Uploads: Startbild/-video und Audio werden via `/upload/image` hochgeladen; Remote-Namen (Basename) fließen direkt in die Nodes ein.
-- Standard-Graph Startbild: `LoadImage(image)` → `RepeatImageBatch(images, amount=frame_count)` → `LoadAudio(audio)` → `Wav2Lip(images,audio)` → `VHS_VideoCombine(images, frame_rate=fps, format=video/mp4)`.
-- Standard-Graph Startvideo: `VHS_LoadVideo(video, force_rate=fps, frame_load_cap=frame_count, force_size=Custom, custom_width/height)` → `LoadAudio(audio)` → `Wav2Lip(images,audio)` → `VHS_VideoCombine(images, frame_rate=fps, format=video/mp4)`. VHS-Combine liefert ein Video ohne Audio-Track; Audio wird im Runner final gemuxt.
+- Staging: Inputs werden in das Comfy-`input/` kopiert (Prio `comfyui.input_dir` → `COMFYUI_INPUT_DIR` → `COMFYUI_DIR/input`), Dateinamen `vidax_audio_<sha16><ext>` und `vidax_start_<sha16><ext>`, Copy überschreibt nur bei abweichender Größe oder Force.
+- Standard-Graph Startbild: `LoadImage(image)` → `RepeatImageBatch(image, amount=frame_count)` → `LoadAudio(audio)` → `Wav2Lip(images,audio)` → `SaveImage(filename_prefix=vidax_wav2lip)`.
+- Standard-Graph Startvideo: `VHS_LoadVideo(video, force_rate=fps, frame_load_cap=frame_count, force_size=Custom, custom_width/height)` → `LoadAudio(audio)` → `Wav2Lip(images,audio)` → `SaveImage(filename_prefix=vidax_wav2lip)`. Links nutzen das Prompt-API-Format `["<node_id>", <output_index>]`, Wav2Lip erhält `images` (Index 0) und `audio` (Index 0).
 
 ## Erwartete Outputs
-- Primär MP4-Video (`comfyui/comfyui_video.mp4`); falls Frames geliefert werden, speichert der Runner sie deterministisch in `workdir/frames/000001.png`, `000002.png`, ...
+- Frames aus `SaveImage` werden deterministisch in `workdir/frames/000001.png`, `000002.png`, ... gespeichert (Sortierung nach Original-Filename, Fallback URL/Index); daraus wird bei Bedarf `comfyui/comfyui_video.mp4` gerendert.
 - Metadaten: Workflow-ID, `chunk_size`/`chunk_count`, `prompt_id` und Output-Typ landen in der ComfyUI-Phase des Manifests (`output_kind`, `output_paths`).
 
 ## Submit + Wait + Collect
 - ComfyUI ist Pflicht im Produktionspfad. Health-Check vor Submit (default `/system_stats`, Fallback `/health`); Ausfall → `COMFYUI_UNAVAILABLE` (kein Dummy-Fallback).
 - Runner ruft `submitPrompt` mit dem Inline-Graph auf, wartet mit `waitForCompletion(prompt_id, {timeout_total, poll_interval_ms=500})` und zieht die gelieferten Files via `collectOutputs`.
 - Polling erfolgt über den ComfyUI-History-Endpunkt (`/history/<prompt_id>` oder `/history?prompt_id=`). Timeout führt zu `COMFYUI_TIMEOUT` und ComfyUI-Phase `failed`.
-- Output-Priorität: MP4 → `workdir/comfyui/comfyui_video.mp4`; Frames → `workdir/frames/`. Fehlen Outputs → `COMFYUI_BAD_RESPONSE`.
+- Output-Priorität: Frames werden sortiert/umbenannt (`%06d.png`), optional zu `workdir/comfyui/comfyui_video.mp4` gerendert. Fehlen Outputs → `COMFYUI_BAD_RESPONSE`.
 - Fehlen `workflow_id`/ComfyUI-URL trotz aktivem ComfyUI → `COMFYUI_UNAVAILABLE`.
 
 ## Workflow-Referenz

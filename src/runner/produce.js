@@ -62,8 +62,8 @@ function buildProduceJob(raw = {}, options = {}) {
   const start = raw.start || raw.start_a;
   const startFields = resolveStartField(start);
   const endImage = raw.end || raw.end_c || raw.end_image;
-  const prompt = raw.prompt || raw.motion_prompt || '';
-  const negative = raw.negative || raw.neg || raw.negative_prompt || '';
+  const prompt = raw.prompt ?? raw.motion_prompt ?? undefined;
+  const negative = raw.negative ?? raw.neg ?? raw.negative_prompt ?? undefined;
   const preSeconds = normalizeNumber(raw.pre ?? raw.pre_seconds, 'pre_seconds', 0);
   const postSeconds = normalizeNumber(raw.post ?? raw.post_seconds, 'post_seconds', 0);
   const fps = normalizeNumber(raw.fps, 'fps', 25);
@@ -96,7 +96,7 @@ function buildProduceJob(raw = {}, options = {}) {
       max_height: maxHeight,
     },
     buffer: { pre_seconds: preSeconds, post_seconds: postSeconds },
-    motion: { prompt: prompt || undefined, guidance: raw.guidance || 7.5 },
+    motion: { prompt: prompt, guidance: raw.guidance || 7.5 },
     output: { workdir, final_name: finalName, emit_manifest: true, emit_logs: true },
     determinism: { fps, audio_master: true, frame_rounding: 'ceil' },
     comfyui: {
@@ -107,8 +107,8 @@ function buildProduceJob(raw = {}, options = {}) {
       seed: raw.seed != null ? raw.seed : undefined,
       chunk_size: comfyChunkSize,
       params: {
-        prompt: prompt || undefined,
-        negative: negative || undefined,
+        prompt,
+        negative,
         width: width || undefined,
         height: height || undefined,
         steps: raw.steps,
