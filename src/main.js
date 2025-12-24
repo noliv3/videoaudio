@@ -195,10 +195,7 @@ yargs(hideBin(process.argv))
         const reason = c.ok ? '' : (c.error ? `: ${c.error}` : '');
         console.log(`${label} ${c.name}${c.version ? ` (${c.version})` : ''}${reason}`);
       });
-      if (!result.ok) {
-        process.exit(mapErrorToExitCode('UNSUPPORTED_FORMAT'));
-      }
-      process.exit(0);
+      process.exit(result.ok ? 0 : result.exitCode);
     } catch (err) {
       exitWithError(err);
     }

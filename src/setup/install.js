@@ -187,10 +187,10 @@ async function installComfyCustomNodes() {
 
 async function runInstallFlow(options = {}) {
   const { skipDoctor = false, assetsPath, requirePython = false } = options;
-  if (!skipDoctor) {
-    await assertDoctor({ requirePython });
-  }
   const installComfyNodes = parseBool(options.installComfyNodes, parseBool(process.env.VA_INSTALL_COMFY_NODES, true));
+  if (!skipDoctor) {
+    await assertDoctor({ requirePython, skip_comfyui: installComfyNodes === true });
+  }
   const dirs = ensureStateDirs();
   const createdConfigs = ensureConfigFiles();
   const bundledWorkflows = ensureBundledWorkflows();

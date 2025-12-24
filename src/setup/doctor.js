@@ -89,16 +89,18 @@ async function checkComfyui(client, options = {}) {
 }
 
 async function runDoctor(options = {}) {
-  const { requirePython = false } = options;
+  const { requirePython = false, skip_comfyui = false } = options;
   const checks = [
     checkCommand('ffmpeg'),
     checkCommand('ffprobe'),
     checkCommand('node', ['-v']),
     checkCommand('python', ['-V'], { critical: !!requirePython }),
   ];
-  const comfyuiClient = new ComfyUIClient(options.comfyui || {});
-  const comfyChecks = await checkComfyui(comfyuiClient, options);
-  checks.push(...comfyChecks);
+  if (!skip_comfyui) {
+    const comfyuiClient = new ComfyUIClient(options.comfyui || {});
+    const comfyChecks = await checkComfyui(comfyuiClient, options);
+    checks.push(...comfyChecks);
+  }
   const criticalFailed = checks.filter((c) => c.critical && !c.ok);
   const failureCode = criticalFailed.find((c) => c.code)?.code || 'UNSUPPORTED_FORMAT';
   const exitCode = criticalFailed.length === 0 ? 0 : mapErrorToExitCode(failureCode);
