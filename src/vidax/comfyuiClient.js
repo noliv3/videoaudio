@@ -427,6 +427,16 @@ class ComfyUIClient {
     if (Array.isArray(outputs)) {
       return outputs.flatMap((item) => this.normalizeOutputs(item.outputs || item.output || item));
     }
+    if (outputs && typeof outputs === 'object') {
+      const hasMedia =
+        (outputs.images && Array.isArray(outputs.images)) || (outputs.videos && Array.isArray(outputs.videos));
+      const hasKindUrl = outputs.kind && outputs.url;
+      if (!hasMedia && !hasKindUrl) {
+        return Object.values(outputs).flatMap((item) =>
+          this.normalizeOutputs(item?.outputs || item?.output || item || [])
+        );
+      }
+    }
     const collected = [];
     if (outputs.images && Array.isArray(outputs.images)) {
       outputs.images.forEach((img) => {
@@ -567,3 +577,6 @@ class ComfyUIClient {
 }
 
 module.exports = ComfyUIClient;
+module.exports.normalizeOutputs = (outputs, config = {}) => new ComfyUIClient(config).normalizeOutputs(outputs);
+module.exports.extractHistoryEntry = (data, promptId, config = {}) =>
+  new ComfyUIClient(config).extractHistoryEntry(data, promptId);
