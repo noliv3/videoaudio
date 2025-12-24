@@ -29,7 +29,7 @@ Skriptbarer Video+Audio-Runner: Job laden, validieren, optional über VIDAX star
 ### Planned / Not in Code
 - Motion-Stärkeregler, Timing-Files aus den Specs werden nicht validiert oder angewendet.
 - Retry-/Backoff-Policy für ComfyUI und Stabilize-Phase fehlen; `seed_policy=per_retry` wird nicht unterstützt.
-- Manifest-Erweiterungen wie `runner.log` Alternative und Cleanup-Regeln sind nicht implementiert.
+- Manifest-Erweiterungen wie eine `runner.log` Alternative bleiben offen; automatisches Frames-Cleanup ist weiterhin manuell, die Temp-Bereinigung läuft nach erfolgreichen Runs.
 - VIDAX-Fehlercodes für spezifische Startfehler (z.B. `COMFYUI_START_FAILED`) und API-gesteuerte Partial/Resume-Semantik sind nicht vorhanden.
 
 ## Docs (Entry Points)
