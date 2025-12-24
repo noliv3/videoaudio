@@ -714,12 +714,26 @@ async function runJob(job, options = {}) {
           output_paths: collectResult.output_paths,
         });
       } catch (err) {
+        const historyError =
+          err.code === 'COMFYUI_PROMPT_FAILED'
+            ? err.details?.history_error || err.details?.historyError || null
+            : null;
         manifest.recordPhase(paths.manifest, 'comfyui', 'failed', {
           workflow_id: workflowId,
           prompt_id: promptId,
           error: err.message,
           code: err.code,
+          history_error: historyError || undefined,
         });
+        if (historyError) {
+          logger.log({
+            level: 'error',
+            stage: 'comfyui',
+            message: historyError,
+            code: err.code,
+            prompt_id: promptId,
+          });
+        }
         throw err;
       }
     }
