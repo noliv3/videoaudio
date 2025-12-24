@@ -14,11 +14,12 @@
 - Metadaten: Workflow-ID, `chunk_size`/`chunk_count`, `prompt_id` und Output-Typ landen in der ComfyUI-Phase des Manifests (`output_kind`, `output_paths`).
 
 ## Submit + Wait + Collect
-- ComfyUI ist Pflicht im Produktionspfad. Health-Check vor Submit (default `/system_stats`, Fallback `/health`); Ausfall → `COMFYUI_UNAVAILABLE` (kein Dummy-Fallback).
+- ComfyUI ist Pflicht im Produktionspfad. Health-Check vor Submit (strict `/system_stats` mit gültigem Body, kein `/health`-Fallback) und `object_info` müssen erfolgreich sein; Ausfall → `COMFYUI_UNAVAILABLE` (kein Dummy-Fallback).
 - Runner ruft `submitPrompt` mit dem Inline-Graph auf, wartet mit `waitForCompletion(prompt_id, {timeout_total, poll_interval_ms=500})` und zieht die gelieferten Files via `collectOutputs`.
 - Polling erfolgt über den ComfyUI-History-Endpunkt (`/history/<prompt_id>` oder `/history?prompt_id=`). Timeout führt zu `COMFYUI_TIMEOUT` und ComfyUI-Phase `failed`.
 - Output-Priorität: Frames werden sortiert/umbenannt (`%06d.png`), optional zu `workdir/comfyui/comfyui_video.mp4` gerendert. Fehlen Outputs → `COMFYUI_BAD_RESPONSE`.
 - Fehlen `workflow_id`/ComfyUI-URL trotz aktivem ComfyUI → `COMFYUI_UNAVAILABLE`.
+- Fehlende Pflicht-Nodes (`LoadImage`, `RepeatImageBatch`, `LoadAudio`, `Wav2Lip`, `SaveImage`, ggf. `VHS_LoadVideo`) oder fehlende Wav2Lip-Weights lösen `COMFYUI_BAD_RESPONSE` aus; bei aktivem ComfyUI gibt es keinen Fallback-Encode.
 
 ## Workflow-Referenz
 - `workflow_ids` dienen nur als Auswahl/Kennzeichen; `va produce` setzt je nach Startquelle `vidax_wav2lip_image_audio` oder `vidax_wav2lip_video_audio`, der Builder erzeugt den API-Graph im Code (Wav2Lip + VideoHelperSuite).
