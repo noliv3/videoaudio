@@ -13,6 +13,8 @@ function buildVidaxWav2LipImagePrompt(options = {}) {
   const audioName = options.audioName;
   const wav2lipMode = options.wav2lipMode ?? 'sequential';
   const faceDetectBatch = asPositiveInt(options.faceDetectBatch, 8) || 8;
+  const filenamePrefix =
+    options.outputPrefix || options.filenamePrefix || options.output_prefix || options.workdirPrefix || 'vidax_wav2lip';
 
   return {
     prompt: {
@@ -42,7 +44,7 @@ function buildVidaxWav2LipImagePrompt(options = {}) {
       },
       5: {
         class_type: 'SaveImage',
-        inputs: { images: ['4', 0], filename_prefix: 'vidax_wav2lip' },
+        inputs: { images: ['4', 0], filename_prefix: filenamePrefix },
       },
     },
   };
@@ -57,6 +59,8 @@ function buildVidaxWav2LipVideoPrompt(options = {}) {
   const audioName = options.audioName;
   const wav2lipMode = options.wav2lipMode ?? 'sequential';
   const faceDetectBatch = asPositiveInt(options.faceDetectBatch, 8) || 8;
+  const filenamePrefix =
+    options.outputPrefix || options.filenamePrefix || options.output_prefix || options.workdirPrefix || 'vidax_wav2lip';
 
   return {
     prompt: {
@@ -86,7 +90,7 @@ function buildVidaxWav2LipVideoPrompt(options = {}) {
       },
       4: {
         class_type: 'SaveImage',
-        inputs: { images: ['3', 0], filename_prefix: 'vidax_wav2lip' },
+        inputs: { images: ['3', 0], filename_prefix: filenamePrefix },
       },
     },
   };
