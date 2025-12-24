@@ -37,6 +37,43 @@ function ensureFfmpeg(result, context) {
   }
 }
 
+function probeMediaDurations(filePath) {
+  const result = spawnSync('ffprobe', [
+    '-v',
+    'error',
+    '-show_entries',
+    'format=duration,stream=index,codec_type,duration',
+    '-of',
+    'json',
+    filePath,
+  ], { encoding: 'utf-8' });
+  if (result.error && result.error.code === 'ENOENT') {
+    throw new AppError('UNSUPPORTED_FORMAT', 'ffprobe not available', { context: 'probe', file: filePath });
+  }
+  if (result.status !== 0) {
+    throw new AppError('FFMPEG_FAILED', 'ffprobe probe failed', { stderr: result.stderr, stdout: result.stdout });
+  }
+  let parsed = {};
+  try {
+    parsed = JSON.parse(result.stdout || '{}');
+  } catch (err) {
+    throw new AppError('FFMPEG_FAILED', 'failed to parse ffprobe output', { error: err.message, output: result.stdout });
+  }
+  const streams = parsed.streams || [];
+  const formatDuration = parsed.format && parsed.format.duration != null ? Number(parsed.format.duration) : null;
+  const videoStream = streams.find((s) => s.codec_type === 'video');
+  const audioStream = streams.find((s) => s.codec_type === 'audio');
+  const videoDuration =
+    videoStream && videoStream.duration != null ? Number(videoStream.duration) : formatDuration != null ? formatDuration : null;
+  const audioDuration =
+    audioStream && audioStream.duration != null ? Number(audioStream.duration) : formatDuration != null ? formatDuration : null;
+  return {
+    formatDuration,
+    videoDuration: Number.isFinite(videoDuration) ? videoDuration : null,
+    audioDuration: Number.isFinite(audioDuration) ? audioDuration : null,
+  };
+}
+
 function muxAudioVideo({
   videoInput,
   audioInput,
@@ -57,9 +94,7 @@ function muxAudioVideo({
       maxDurationSeconds,
     });
   }
-  const frameMargin = 1 / fps;
-  const trimTarget = Math.max(0, maxDurationSeconds - frameMargin);
-  const durationCap = trimTarget > 0 ? trimTarget : maxDurationSeconds;
+  const targetDurationSeconds = maxDurationSeconds;
   const filters = [];
   if (targetWidth && targetHeight) {
     filters.push(`scale=${targetWidth}:${targetHeight}:flags=lanczos`);
@@ -68,17 +103,50 @@ function muxAudioVideo({
   if (holdSeconds && holdSeconds > 0) {
     filters.push(`tpad=stop_mode=clone:stop_duration=${holdSeconds}`);
   }
-  filters.push(`trim=0:${durationCap}`, 'setpts=PTS-STARTPTS');
+  filters.push(`trim=0:${targetDurationSeconds}`, 'setpts=PTS-STARTPTS');
   const args = ['-y'];
   if (isImageSequence) {
     args.push('-framerate', String(fps));
   }
   args.push('-i', videoInput, '-i', audioInput, '-filter_complex', `[0:v]${filters.join(',')}[v]`, '-map', '[v]', '-map', '1:a');
-  args.push('-r', String(fps), '-vsync', 'cfr', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', '-movflags', '+faststart', outPath);
+  args.push(
+    '-r',
+    String(fps),
+    '-vsync',
+    'cfr',
+    '-c:v',
+    'libx264',
+    '-pix_fmt',
+    'yuv420p',
+    '-c:a',
+    'aac',
+    '-t',
+    String(targetDurationSeconds),
+    '-movflags',
+    '+faststart',
+    outPath
+  );
   const result = spawnSync('ffmpeg', args, { encoding: 'utf-8' });
   ensureFfmpeg(result, 'mux');
   if (!fs.existsSync(outPath)) {
     throw new AppError('FFMPEG_FAILED', 'ffmpeg did not produce output', { outPath });
+  }
+  const probe = probeMediaDurations(outPath);
+  const tolerance = 1 / Number(fps);
+  const videoDrift = Number.isFinite(targetDurationSeconds) && Number.isFinite(tolerance) && probe.videoDuration != null
+    ? Math.abs(probe.videoDuration - targetDurationSeconds)
+    : Infinity;
+  const audioDrift = Number.isFinite(targetDurationSeconds) && Number.isFinite(tolerance) && probe.audioDuration != null
+    ? Math.abs(probe.audioDuration - targetDurationSeconds)
+    : Infinity;
+  if (videoDrift > tolerance || audioDrift > tolerance) {
+    throw new AppError('FFMPEG_FAILED', 'muxed output duration drift exceeded tolerance', {
+      target_duration: targetDurationSeconds,
+      fps,
+      video_duration: probe.videoDuration,
+      audio_duration: probe.audioDuration,
+      tolerance,
+    });
   }
   return outPath;
 }
@@ -302,6 +370,7 @@ module.exports = {
   getFfmpegVersion,
   getFfprobeVersion,
   muxAudioVideo,
+  probeMediaDurations,
   createStillVideo,
   createMotionVideoFromImage,
   extractFirstFrame,

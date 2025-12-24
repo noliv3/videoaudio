@@ -75,6 +75,26 @@ class ComfyUIClient {
     }
   }
 
+  async getObjectInfo() {
+    if (!this.baseUrl) {
+      return { ok: false, error: 'baseUrl_missing' };
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeout);
+    try {
+      const res = await fetch(`${this.baseUrl}/object_info`, { signal: controller.signal });
+      clearTimeout(timer);
+      if (!res.ok) {
+        return { ok: false, status: res.status, statusText: res.statusText };
+      }
+      const data = await res.json();
+      return { ok: true, status: res.status, data };
+    } catch (err) {
+      clearTimeout(timer);
+      return { ok: false, error: err.message };
+    }
+  }
+
   async uploadFile(localPath, remoteName) {
     if (!this.baseUrl) {
       const error = new Error('ComfyUI baseUrl missing');
