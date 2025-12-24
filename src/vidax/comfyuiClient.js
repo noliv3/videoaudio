@@ -365,6 +365,63 @@ class ComfyUIClient {
     return null;
   }
 
+  extractHistoryMessages(candidate) {
+    if (!candidate) return [];
+    const status = candidate.status || {};
+    const messages = Array.isArray(status.messages) ? status.messages : candidate.messages;
+    const collected = [];
+    if (status.message) collected.push(status.message);
+    if (Array.isArray(messages)) {
+      messages.forEach((msg) => {
+        if (msg?.message) collected.push(msg.message);
+        else if (msg?.text) collected.push(msg.text);
+      });
+    }
+    return collected.filter(Boolean).map((msg) => msg.toString());
+  }
+
+  extractNodeErrors(candidate) {
+    const nodeErrors = candidate?.node_errors || candidate?.status?.node_errors;
+    if (!nodeErrors || typeof nodeErrors !== 'object') return [];
+    return Object.entries(nodeErrors)
+      .map(([node, err]) => ({
+        node,
+        error: typeof err === 'string' ? err : err?.message || err,
+      }))
+      .filter((entry) => entry.error);
+  }
+
+  hasHistoryError(candidate) {
+    if (!candidate) return false;
+    const status = candidate.status || {};
+    const statusValue = typeof status.status === 'string' ? status.status.toLowerCase() : null;
+    if (statusValue === 'error' || statusValue === 'failed') return true;
+    if (Array.isArray(status.messages)) {
+      return status.messages.some((msg) => {
+        const tag = (msg?.type || msg?.level || msg?.severity || '').toString().toLowerCase();
+        return tag === 'error' || tag === 'failed';
+      });
+    }
+    return false;
+  }
+
+  summarizeHistory(historyEntry) {
+    if (!historyEntry) return { found: false };
+    const raw = historyEntry.raw || {};
+    const status = raw.status || {};
+    const messages = this.extractHistoryMessages(raw);
+    const nodeErrors = this.extractNodeErrors(raw);
+    return {
+      found: true,
+      done: !!historyEntry.done,
+      output_count: historyEntry.outputs?.length || 0,
+      status: status.status || status.state || status.value || null,
+      error: historyEntry.historyError || null,
+      messages: messages.slice(0, 5),
+      node_errors: nodeErrors.slice(0, 5),
+    };
+  }
+
   normalizeOutputs(outputs) {
     if (!outputs) return [];
     if (Array.isArray(outputs)) {
@@ -408,9 +465,22 @@ class ComfyUIClient {
   async collectOutputs(promptId, destPaths = {}, options = {}) {
     const outputs = options.outputs || [];
     if (!outputs.length) {
-      const error = new Error('ComfyUI outputs missing');
-      error.code = 'COMFYUI_BAD_RESPONSE';
-      throw error;
+      const historyEntry = promptId ? await this.fetchHistory(promptId, { directOnly: true }) : null;
+      const historyMessages = this.extractHistoryMessages(historyEntry?.raw);
+      const nodeErrors = this.extractNodeErrors(historyEntry?.raw);
+      const hasError = historyEntry?.historyError || this.hasHistoryError(historyEntry?.raw);
+      if (hasError) {
+        throw new AppError('COMFYUI_PROMPT_FAILED', historyEntry?.historyError || 'ComfyUI prompt failed', {
+          prompt_id: promptId,
+          history_error: historyEntry?.historyError || null,
+          node_errors: nodeErrors.length ? nodeErrors : undefined,
+          messages: historyMessages.length ? historyMessages : undefined,
+        });
+      }
+      throw new AppError('COMFYUI_OUTPUTS_MISSING', 'ComfyUI outputs missing', {
+        prompt_id: promptId,
+        history: this.summarizeHistory(historyEntry),
+      });
     }
     const videoTarget = destPaths.videoPath;
     const framesDir = destPaths.framesDir;
