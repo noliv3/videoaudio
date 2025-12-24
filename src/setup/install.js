@@ -5,6 +5,7 @@ const { stateRoot } = require('../runner/paths');
 const { AppError } = require('../errors');
 const { assertDoctor } = require('./doctor');
 const { ensureAllAssets, resolveAssetsConfigPath, downloadTo } = require('./assets');
+const { resolveCustomNodesDir, resolveComfyPython } = require('./comfyPaths');
 
 const defaultWav2LipSources = [
   process.env.WAV2LIP_GAN_URL,
@@ -83,33 +84,6 @@ function parseBool(value, fallback = true) {
   if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
   if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
   return fallback;
-}
-
-function resolveCustomNodesDir() {
-  const envDir = process.env.COMFYUI_DIR;
-  if (envDir) {
-    return path.isAbsolute(envDir) ? envDir : path.resolve(envDir);
-  }
-  if (process.platform === 'win32') {
-    return 'F:\\\\ComfyUI\\\\custom_nodes';
-  }
-  return path.join(stateRoot, 'comfyui', 'custom_nodes');
-}
-
-function resolveComfyPython() {
-  if (process.env.COMFYUI_PYTHON) {
-    return process.env.COMFYUI_PYTHON;
-  }
-  const isWin = process.platform === 'win32';
-  const comfyDir = process.env.COMFYUI_DIR || path.join(stateRoot, 'comfyui');
-  if (isWin) {
-    const venvScript = path.join(comfyDir, 'venv', 'Scripts', 'python.exe');
-    if (fs.existsSync(venvScript)) return venvScript;
-  } else {
-    const venvBin = path.join(comfyDir, 'venv', 'bin', 'python');
-    if (fs.existsSync(venvBin)) return venvBin;
-  }
-  return 'python';
 }
 
 function runGit(args, cwd) {

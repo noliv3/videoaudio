@@ -1,5 +1,9 @@
+const fs = require('fs');
+const path = require('path');
 const { spawnSync } = require('child_process');
 const { AppError, mapErrorToExitCode } = require('../errors');
+const ComfyUIClient = require('../vidax/comfyuiClient');
+const { resolveCustomNodesDir } = require('./comfyPaths');
 
 function checkCommand(command, args = ['-version'], options = {}) {
   const { critical = true } = options;
@@ -13,6 +17,77 @@ function checkCommand(command, args = ['-version'], options = {}) {
   }
 }
 
+function checkWav2LipWeights() {
+  const customNodesDir = resolveCustomNodesDir();
+  const checks = [];
+  const ganPath = path.join(customNodesDir, 'ComfyUI_wav2lip', 'Wav2Lip', 'checkpoints', 'wav2lip_gan.pth');
+  const s3fdPath = path.join(customNodesDir, 'ComfyUI_wav2lip', 'Wav2Lip', 'face_detection', 'detection', 'sfd', 's3fd.pth');
+  checks.push({
+    name: 'comfyui:model:wav2lip_gan.pth',
+    ok: fs.existsSync(ganPath),
+    critical: true,
+    code: 'INPUT_NOT_FOUND',
+    error: fs.existsSync(ganPath) ? null : 'missing wav2lip_gan.pth',
+    details: { path: ganPath },
+  });
+  checks.push({
+    name: 'comfyui:model:s3fd.pth',
+    ok: fs.existsSync(s3fdPath),
+    critical: true,
+    code: 'INPUT_NOT_FOUND',
+    error: fs.existsSync(s3fdPath) ? null : 'missing s3fd.pth',
+    details: { path: s3fdPath },
+  });
+  return checks;
+}
+
+function extractNodeNames(objectInfo) {
+  const nodes = objectInfo?.nodes || objectInfo?.data?.nodes || objectInfo?.data || {};
+  return new Set(Object.keys(nodes || {}));
+}
+
+async function checkComfyui(client, options = {}) {
+  const checks = [];
+  const health = await client.health();
+  const healthOk = !!health?.ok;
+  checks.push({
+    name: 'comfyui:health',
+    ok: healthOk,
+    critical: true,
+    code: healthOk ? null : 'COMFYUI_UNAVAILABLE',
+    error: healthOk ? null : (health?.error || `status ${health?.status || 'unknown'}`),
+    details: health,
+  });
+  if (!healthOk) {
+    return checks;
+  }
+
+  const objectInfo = await client.getObjectInfo();
+  const infoOk = !!objectInfo?.ok;
+  const nodeNames = extractNodeNames(objectInfo);
+  const requireVideoNodes = options.requireVideoNodes !== false;
+  const requiredNodes = ['LoadImage', 'RepeatImageBatch', 'LoadAudio', 'SaveImage', 'Wav2Lip'];
+  if (requireVideoNodes) {
+    requiredNodes.push('VHS_LoadVideo');
+  }
+  const missing = requiredNodes.filter((name) => !nodeNames.has(name));
+  checks.push({
+    name: 'comfyui:object_info',
+    ok: infoOk && missing.length === 0,
+    critical: true,
+    code: infoOk && missing.length === 0 ? null : missing.length ? 'COMFYUI_MISSING_NODES' : 'COMFYUI_UNAVAILABLE',
+    error: infoOk
+      ? missing.length
+        ? `missing nodes: ${missing.join(', ')}`
+        : null
+      : objectInfo?.error || 'object_info unavailable',
+    details: Object.assign({ missing }, objectInfo || {}),
+  });
+
+  checks.push(...checkWav2LipWeights());
+  return checks;
+}
+
 async function runDoctor(options = {}) {
   const { requirePython = false } = options;
   const checks = [
@@ -21,8 +96,12 @@ async function runDoctor(options = {}) {
     checkCommand('node', ['-v']),
     checkCommand('python', ['-V'], { critical: !!requirePython }),
   ];
+  const comfyuiClient = new ComfyUIClient(options.comfyui || {});
+  const comfyChecks = await checkComfyui(comfyuiClient, options);
+  checks.push(...comfyChecks);
   const criticalFailed = checks.filter((c) => c.critical && !c.ok);
-  const exitCode = criticalFailed.length === 0 ? 0 : mapErrorToExitCode('UNSUPPORTED_FORMAT');
+  const failureCode = criticalFailed.find((c) => c.code)?.code || 'UNSUPPORTED_FORMAT';
+  const exitCode = criticalFailed.length === 0 ? 0 : mapErrorToExitCode(failureCode);
   return { ok: criticalFailed.length === 0, checks, exitCode };
 }
 
