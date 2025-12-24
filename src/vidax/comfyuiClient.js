@@ -13,6 +13,7 @@ if (!FormDataConstructor) {
 
 const streamPipeline = promisify(pipeline);
 const imageExt = ['.png', '.jpg', '.jpeg', '.webp'];
+const { AppError } = require('../errors');
 
 class ComfyUIClient {
   constructor(config = {}) {
@@ -243,14 +244,52 @@ class ComfyUIClient {
     }
     const timeoutTotal = options.timeout_total || this.timeout || 60000;
     const pollInterval = options.poll_interval_ms || 500;
+    const stallThreshold = options.history_poll_threshold_ms || Math.max(5000, pollInterval * 4);
+    const emptyThreshold = options.empty_output_history_ms || stallThreshold;
     const deadline = Date.now() + timeoutTotal;
     let lastData = null;
+    let lastProgress = Date.now();
+    let lastOutputCount = 0;
     while (Date.now() < deadline) {
       const result = await this.fetchHistory(promptId);
-      if (result && result.done) {
+      const outputCount = result?.outputs?.length || 0;
+      if (result?.historyError) {
+        throw new AppError('COMFYUI_PROMPT_FAILED', result.historyError, {
+          prompt_id: promptId,
+          history_error: result.historyError,
+        });
+      }
+      if (result?.done) {
+        if (outputCount === 0) {
+          const historyCheck = await this.fetchHistory(promptId, { directOnly: true });
+          if (historyCheck?.historyError) {
+            throw new AppError('COMFYUI_PROMPT_FAILED', historyCheck.historyError, {
+              prompt_id: promptId,
+              history_error: historyCheck.historyError,
+            });
+          }
+        }
         return { status: 'completed', outputs: result.outputs || [], raw: result.raw };
       }
-      lastData = result;
+      if (outputCount > lastOutputCount) {
+        lastProgress = Date.now();
+        lastOutputCount = outputCount;
+      }
+      const stalledTooLong = Date.now() - lastProgress >= stallThreshold;
+      const emptyTooLong = outputCount === 0 && Date.now() - lastProgress >= emptyThreshold;
+      if (stalledTooLong || emptyTooLong) {
+        const historyCheck = await this.fetchHistory(promptId, { directOnly: true });
+        if (historyCheck?.historyError) {
+          throw new AppError('COMFYUI_PROMPT_FAILED', historyCheck.historyError, {
+            prompt_id: promptId,
+            history_error: historyCheck.historyError,
+          });
+        }
+        lastData = historyCheck || result;
+        lastProgress = Date.now();
+      } else {
+        lastData = result;
+      }
       await new Promise((resolve) => setTimeout(resolve, pollInterval));
     }
     const error = new Error('ComfyUI polling timeout');
@@ -259,7 +298,7 @@ class ComfyUIClient {
     throw error;
   }
 
-  async fetchHistory(promptId) {
+  async fetchHistory(promptId, options = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeout);
     const endpoints = [
@@ -268,7 +307,8 @@ class ComfyUIClient {
       `${this.baseUrl}${this.historyEndpoint}`,
     ];
     try {
-      for (const url of endpoints) {
+      const targetEndpoints = options.directOnly ? endpoints.slice(0, 1) : endpoints;
+      for (const url of targetEndpoints) {
         try {
           const res = await fetch(url, { signal: controller.signal });
           if (!res.ok) continue;
@@ -292,8 +332,37 @@ class ComfyUIClient {
     if (!data) return null;
     const candidate = data.history?.[promptId] || data[promptId] || data.history || data;
     const outputs = this.normalizeOutputs(candidate?.outputs || candidate?.output || []);
+    const historyError = this.extractHistoryError(candidate);
     const done = Boolean(candidate?.status?.completed || candidate?.status?.done || outputs.length > 0);
-    return { done, outputs, raw: candidate };
+    return { done, outputs, raw: candidate, historyError };
+  }
+
+  extractHistoryError(candidate) {
+    if (!candidate) return null;
+    const status = candidate.status || {};
+    if (status.error) return status.error;
+    const statusValue = typeof status.status === 'string' ? status.status.toLowerCase() : null;
+    if (statusValue === 'error') {
+      return status.error || status.message || status.status;
+    }
+    if (status.exception) {
+      if (typeof status.exception === 'string') return status.exception;
+      if (typeof status.exception?.message === 'string') return status.exception.message;
+    }
+    if (Array.isArray(status.messages)) {
+      const msg = status.messages.find((m) => {
+        const tag = (m?.type || m?.level || m?.severity || '').toString().toLowerCase();
+        return tag === 'error';
+      });
+      if (msg?.message) return msg.message;
+      if (msg?.text) return msg.text;
+    }
+    if (candidate.error) return candidate.error;
+    if (candidate.exception) {
+      if (typeof candidate.exception === 'string') return candidate.exception;
+      if (candidate.exception?.message) return candidate.exception.message;
+    }
+    return null;
   }
 
   normalizeOutputs(outputs) {
