@@ -395,6 +395,47 @@ function runLocalFaceProbe(options = {}) {
   return { meta, metaPath, faceCropPath, debugImagePath };
 }
 
+function ensureMotionBaseVideo(options = {}) {
+  const {
+    job,
+    paths,
+    visualTargetDurationSeconds,
+    fps,
+    renderWidth,
+    renderHeight,
+    seed,
+    logger,
+  } = options;
+  if (job?.input?.start_image) {
+    createMotionVideoFromImage({
+      imagePath: job.input.start_image,
+      fps,
+      durationSeconds: visualTargetDurationSeconds,
+      outPath: paths.motionBaseVideo,
+      targetWidth: renderWidth,
+      targetHeight: renderHeight,
+      seed,
+    });
+    logger?.log({
+      level: 'info',
+      stage: 'fallback',
+      message: 'generated motion_base video from start_image',
+      out_path: paths.motionBaseVideo,
+    });
+    return { kind: 'motion_base_fallback', path: paths.motionBaseVideo, isImageSequence: false };
+  }
+  if (job?.input?.start_video) {
+    logger?.log({
+      level: 'info',
+      stage: 'fallback',
+      message: 'using start_video as motion base',
+      out_path: job.input.start_video,
+    });
+    return { kind: 'start_video_passthrough', path: job.input.start_video, isImageSequence: false };
+  }
+  throw new AppError('INPUT_NOT_FOUND', 'no start source for fallback video');
+}
+
 async function runJob(job, options = {}) {
   const validation = validateJob(job);
   if (!validation.valid) {
@@ -447,6 +488,8 @@ async function runJob(job, options = {}) {
   let encodeStarted = null;
   try {
     let partialReason = null;
+    let degraded = existingManifest?.degraded || false;
+    let degradedReason = existingManifest?.degraded_reason || null;
     let comfyuiOutputKind = comfyResume.outputKind || null;
     let comfyuiWorkflowId = existingManifest?.phases?.comfyui?.workflow_id || null;
     let lipsyncMode = skipLipsync ? 'external' : 'off';
@@ -943,7 +986,14 @@ async function runJob(job, options = {}) {
             prompt_id: promptId,
           });
         }
-        throw err;
+        degraded = true;
+        degradedReason = degradedReason || err.code || 'COMFYUI_FAILED';
+        logger.log({
+          level: 'warn',
+          stage: 'comfyui',
+          message: 'comfyui failed; falling back to motion base video',
+          code: err.code,
+        });
       }
     }
 
@@ -952,26 +1002,38 @@ async function runJob(job, options = {}) {
     const lipsyncProvider = normalizedJob?.lipsync?.provider || null;
     const allowPassthrough = normalizedJob?.lipsync?.params?.allow_passthrough === true;
     if (comfyEnabled && !videoSource) {
-      const err = new AppError('COMFYUI_BAD_RESPONSE', 'ComfyUI produced no usable outputs', {
-        phase: manifestPhases.comfyui || null,
-      });
-      throw err;
-    }
-    if (!videoSource) {
-      videoSource = selectVideoSource(
-        normalizedJob,
+      degraded = true;
+      degradedReason = degradedReason || 'COMFYUI_OUTPUTS_MISSING';
+      videoSource = ensureMotionBaseVideo({
+        job: normalizedJob,
         paths,
         visualTargetDurationSeconds,
-        prepareDetails.fps,
-        logger,
+        fps: prepareDetails.fps,
         renderWidth,
-        renderHeight
-      );
-      if (videoSource && !videoSource.kind.startsWith('diagnostic_fallback_')) {
-        videoSource = Object.assign({}, videoSource, { kind: `diagnostic_fallback_${videoSource.kind}` });
-      }
+        renderHeight,
+        seed: comfyuiSeedInfo.seed,
+        logger,
+      });
+    }
+    if (!videoSource) {
+      videoSource = ensureMotionBaseVideo({
+        job: normalizedJob,
+        paths,
+        visualTargetDurationSeconds,
+        fps: prepareDetails.fps,
+        renderWidth,
+        renderHeight,
+        seed: comfyuiSeedInfo.seed,
+        logger,
+      });
     }
     let encodeVideoSource = videoSource;
+
+    if (degraded) {
+      manifest.recordDegraded(paths.manifest, degraded, degradedReason);
+    } else {
+      manifest.recordDegraded(paths.manifest, false, null);
+    }
 
     if (skipLipsync) {
       logger.log({ level: 'info', stage: 'lipsync', message: 'resume: reusing lipsync output' });
@@ -1010,18 +1072,15 @@ async function runJob(job, options = {}) {
           out_path: paths.lipsyncOutputVideo,
           allow_passthrough: allowPassthrough,
         });
-        if (allowPassthrough) {
-          partialReason = 'lipsync_failed_passthrough';
-          lipsyncMode = 'external';
-          logger.log({
-            level: 'warn',
-            stage: 'lipsync',
-            message: 'failed to prepare lipsync input; allow_passthrough=true so continuing',
-            code: err.code,
-          });
-        } else {
-          throw err;
-        }
+        degraded = true;
+        degradedReason = degradedReason || err.code || 'LIPSYNC_FAILED';
+        lipsyncMode = 'external';
+        logger.log({
+          level: 'warn',
+          stage: 'lipsync',
+          message: 'failed to prepare lipsync input; continuing without lipsync',
+          code: err.code,
+        });
       }
       if (!preLipVideoPath) {
         encodeVideoSource = videoSource;
@@ -1057,23 +1116,27 @@ async function runJob(job, options = {}) {
             out_path: paths.lipsyncOutputVideo,
             allow_passthrough: allowPassthrough,
           });
-          if (allowPassthrough) {
-            partialReason = 'lipsync_failed_passthrough';
-            lipsyncMode = 'external';
-            logger.log({
-              level: 'warn',
-              stage: 'lipsync',
-              message: 'lipsync failed but allow_passthrough=true; continuing with original video source',
-              code: err.code,
-            });
-            lipsyncMeta = { mode: 'external', status: 'failed_passthrough', provider: lipsyncProvider, error: err.message };
-            manifest.recordLipsyncMeta(paths.manifest, lipsyncMeta);
-          } else {
-            throw err;
-          }
+          degraded = true;
+          degradedReason = degradedReason || err.code || 'LIPSYNC_FAILED';
+          lipsyncMode = 'external';
+          logger.log({
+            level: 'warn',
+            stage: 'lipsync',
+            message: 'lipsync failed; continuing with original video source',
+            code: err.code,
+          });
+          lipsyncMeta = {
+            mode: 'external',
+            status: allowPassthrough ? 'failed_passthrough' : 'failed',
+            provider: lipsyncProvider,
+            error: err.message,
+          };
+          manifest.recordLipsyncMeta(paths.manifest, lipsyncMeta);
         }
       }
     }
+
+    manifest.recordDegraded(paths.manifest, degraded, degradedReason);
 
     manifest.recordPhase(paths.manifest, 'encode', 'queued');
     logger.log({ level: 'info', stage: 'encode', message: 'starting ffmpeg mux' });
@@ -1142,6 +1205,8 @@ async function runJob(job, options = {}) {
     manifest.recordPhase(paths.manifest, 'encode', 'completed', {
       fps: prepareDetails.fps,
       video_source: videoSourceLabel,
+      degraded,
+      degraded_reason: degradedReason,
       duration_cap_seconds: visualTargetDurationSeconds,
       audio_duration_seconds: paddedAudioDurationSeconds,
       audio_path: effectiveAudioPath,
@@ -1173,7 +1238,11 @@ async function runJob(job, options = {}) {
       }
     }
 
-    manifest.markFinished(paths.manifest, 'success', { partial_reason: partialReason });
+    manifest.markFinished(paths.manifest, 'success', {
+      partial_reason: partialReason,
+      degraded,
+      degraded_reason: degradedReason,
+    });
     logger.log({ level: 'info', stage: 'done', run_id: runId, message: 'job complete with encoded output' });
 
     return { runId, status: 'success', paths };

@@ -484,6 +484,7 @@ class ComfyUIClient {
       const historyMessages = this.extractHistoryMessages(historyEntry?.raw);
       const nodeErrors = this.extractNodeErrors(historyEntry?.raw);
       const hasError = historyEntry?.historyError || this.hasHistoryError(historyEntry?.raw);
+      const summary = this.summarizeHistory(historyEntry);
       if (hasError) {
         throw new AppError('COMFYUI_PROMPT_FAILED', historyEntry?.historyError || 'ComfyUI prompt failed', {
           prompt_id: promptId,
@@ -494,7 +495,9 @@ class ComfyUIClient {
       }
       throw new AppError('COMFYUI_OUTPUTS_MISSING', 'ComfyUI outputs missing', {
         prompt_id: promptId,
-        history: this.summarizeHistory(historyEntry),
+        history: summary,
+        node_errors: nodeErrors.length ? nodeErrors : undefined,
+        messages: historyMessages.length ? historyMessages : undefined,
       });
     }
     const videoTarget = destPaths.videoPath;

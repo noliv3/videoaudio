@@ -12,12 +12,13 @@
 ## Erwartete Outputs
 - Frames aus `SaveImage` werden deterministisch in `workdir/frames/000001.png`, `000002.png`, ... gespeichert (Sortierung nach Original-Filename, Fallback URL/Index); daraus wird bei Bedarf `comfyui/comfyui_video.mp4` gerendert.
 - Metadaten: Workflow-ID, `chunk_size`/`chunk_count`, `prompt_id` und Output-Typ landen in der ComfyUI-Phase des Manifests (`output_kind`, `output_paths`).
+- Wenn die History als abgeschlossen gemeldet wird aber keine Outputs enthält, wird `COMFYUI_OUTPUTS_MISSING` mit zusammengefassten `node_errors`/`messages` aus der History gemeldet.
 
 ## Submit + Wait + Collect
-- ComfyUI ist Pflicht im Produktionspfad. Health-Check vor Submit (strict `/system_stats` mit gültigem Body, kein `/health`-Fallback) und `object_info` müssen erfolgreich sein; Ausfall → `COMFYUI_UNAVAILABLE` (kein Dummy-Fallback).
+- ComfyUI ist Pflicht im Produktionspfad. Health-Check vor Submit (strict `/system_stats` mit gültigem Body, kein `/health`-Fallback) und `object_info` müssen erfolgreich sein; Ausfall → `COMFYUI_UNAVAILABLE` (kein Skip, aber der Encode kann später degradiert weiterlaufen).
 - Runner ruft `submitPrompt` mit dem Inline-Graph auf, wartet mit `waitForCompletion(prompt_id, {timeout_total, poll_interval_ms=500})` und zieht die gelieferten Files via `collectOutputs`.
 - Polling erfolgt über den ComfyUI-History-Endpunkt (`/history/<prompt_id>` oder `/history?prompt_id=`). Timeout führt zu `COMFYUI_TIMEOUT` und ComfyUI-Phase `failed`.
-- Output-Priorität: Frames werden sortiert/umbenannt (`%06d.png`), optional zu `workdir/comfyui/comfyui_video.mp4` gerendert. Fehlen Outputs → `COMFYUI_BAD_RESPONSE`.
+- Output-Priorität: Frames werden sortiert/umbenannt (`%06d.png`), optional zu `workdir/comfyui/comfyui_video.mp4` gerendert. Fehlen Outputs → `COMFYUI_OUTPUTS_MISSING`; der Runner markiert `degraded=true`, protokolliert den Fehlercode und encodiert auf Basis des Startbild- oder Startvideo-Basisclips weiter.
 - Fehlen `workflow_id`/ComfyUI-URL trotz aktivem ComfyUI → `COMFYUI_UNAVAILABLE`.
 - Fehlende Pflicht-Nodes (`LoadImage`, `RepeatImageBatch`, `LoadAudio`, `Wav2Lip`, `SaveImage`, ggf. `VHS_LoadVideo`) oder fehlende Wav2Lip-Weights lösen `COMFYUI_BAD_RESPONSE` aus; bei aktivem ComfyUI gibt es keinen Fallback-Encode.
 

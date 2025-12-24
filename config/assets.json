@@ -4,13 +4,6 @@
     "on_hash_mismatch": "fail",
     "allow_insecure_http": false
   },
-  "workflows": [
-    {
-      "id": "vidax_text2img_frames",
-      "url": "../assets/workflows/vidax_text2img_frames.json",
-      "sha256": "48c7e5892cd4ddcc488be6b219588824c8e1c8847a9c8b36cf0d45a2faa75181",
-      "dest": "comfyui/workflows/vidax_text2img_frames.json"
-    }
-  ],
+  "workflows": [],
   "models": []
 }

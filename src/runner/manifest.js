@@ -19,6 +19,8 @@ function baseManifest(job, runId) {
     run_id: runId,
     status: 'queued',
     run_status: 'queued',
+    degraded: false,
+    degraded_reason: null,
     timestamps: {
       created: now,
       started: null,
@@ -94,6 +96,12 @@ function markFinished(manifestPath, exitStatus, extra = {}) {
     const terminal = exitStatus === 'failed' ? 'failed' : 'completed';
     m.status = terminal;
     m.run_status = terminal;
+    if (typeof extra.degraded === 'boolean') {
+      m.degraded = extra.degraded;
+    }
+    if (extra.degraded_reason) {
+      m.degraded_reason = extra.degraded_reason;
+    }
     m.exit_status = exitStatus ?? null;
     m.partial_reason = extra.partial_reason ?? m.partial_reason ?? null;
     m.timestamps = m.timestamps || {};
@@ -199,6 +207,14 @@ function recordLipsyncMeta(manifestPath, meta = null) {
   });
 }
 
+function recordDegraded(manifestPath, degraded, reason = null) {
+  return updateManifest(manifestPath, (m) => {
+    m.degraded = !!degraded;
+    m.degraded_reason = reason || null;
+    return m;
+  });
+}
+
 module.exports = {
   createDraft,
   markStarted,
@@ -211,4 +227,5 @@ module.exports = {
   recordFaceMeta,
   recordMotionMeta,
   recordLipsyncMeta,
+  recordDegraded,
 };

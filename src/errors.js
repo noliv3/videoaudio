@@ -13,12 +13,14 @@ function mapErrorToExitCode(code) {
       return 10;
     case 'INPUT_NOT_FOUND':
     case 'UNSUPPORTED_FORMAT':
+    case 'HASH_MISMATCH':
       return 20;
     case 'COMFYUI_TIMEOUT':
     case 'COMFYUI_BAD_RESPONSE':
     case 'COMFYUI_UNAVAILABLE':
     case 'COMFYUI_MISSING_NODES':
     case 'COMFYUI_PROMPT_FAILED':
+    case 'COMFYUI_OUTPUTS_MISSING':
     case 'COMFYUI_FACE_NOT_FOUND':
       return 30;
     case 'LIPSYNC_FAILED':
