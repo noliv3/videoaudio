@@ -638,6 +638,8 @@ async function runJob(job, options = {}) {
               audioName: audioInputName,
               fps: prepareDetails.fps,
               frameCount: comfyFrameCount,
+              wav2lipMode: effectiveJob?.comfyui?.wav2lip?.mode,
+              faceDetectBatch: effectiveJob?.comfyui?.wav2lip?.face_detect_batch,
             })
           : buildVidaxWav2LipVideoPrompt({
               startVideoName: startInputName,
@@ -646,6 +648,8 @@ async function runJob(job, options = {}) {
               frameCount: comfyFrameCount,
               width: renderWidth,
               height: renderHeight,
+              wav2lipMode: effectiveJob?.comfyui?.wav2lip?.mode,
+              faceDetectBatch: effectiveJob?.comfyui?.wav2lip?.face_detect_batch,
             });
         const submitResponse = await comfyuiClient.submitPrompt(payload);
         promptId = submitResponse?.prompt_id || submitResponse?.id || submitResponse?.promptId || null;
