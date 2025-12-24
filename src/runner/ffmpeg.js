@@ -15,6 +15,19 @@ function getFfmpegVersion() {
   return (match && match[1]) || firstLine.trim() || 'unknown';
 }
 
+function getFfprobeVersion() {
+  const result = spawnSync('ffprobe', ['-version'], { encoding: 'utf-8' });
+  if (result.error && result.error.code === 'ENOENT') {
+    return 'unknown';
+  }
+  if (result.status !== 0 || !result.stdout) {
+    return 'unknown';
+  }
+  const firstLine = result.stdout.split('\n')[0] || '';
+  const match = firstLine.match(/ffprobe version\s+([^\s]+)/i);
+  return (match && match[1]) || firstLine.trim() || 'unknown';
+}
+
 function ensureFfmpeg(result, context) {
   if (result.error && result.error.code === 'ENOENT') {
     throw new AppError('UNSUPPORTED_FORMAT', 'ffmpeg not available', { context });
@@ -287,6 +300,7 @@ function concatVideos(videoPaths, outPath, { fps, targetWidth, targetHeight } = 
 
 module.exports = {
   getFfmpegVersion,
+  getFfprobeVersion,
   muxAudioVideo,
   createStillVideo,
   createMotionVideoFromImage,

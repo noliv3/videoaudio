@@ -8,6 +8,7 @@ const manifest = require('./manifest');
 const { getAudioDurationSeconds } = require('./audio');
 const {
   getFfmpegVersion,
+  getFfprobeVersion,
   muxAudioVideo,
   createStillVideo,
   createMotionVideoFromImage,
@@ -393,12 +394,13 @@ async function runJob(job, options = {}) {
     };
     manifest.recordPrepare(paths.manifest, prepareDetails);
     manifest.recordPhase(paths.manifest, 'prepare', 'completed');
-    manifest.recordVersions(paths.manifest, { ffmpeg: getFfmpegVersion() });
+    manifest.recordVersions(paths.manifest, { ffmpeg: getFfmpegVersion(), ffprobe: getFfprobeVersion() });
 
     manifest.recordPhase(paths.manifest, 'comfyui', 'queued');
     const workflowIds = resolveWorkflowIds(effectiveJob);
     const workflowId = workflowIds[0] || null;
     comfyuiWorkflowId = workflowId;
+    let promptId = null;
     const comfyEnabled = effectiveJob?.comfyui?.enable !== false;
     let videoSource = null;
     if (!comfyEnabled) {
@@ -477,7 +479,7 @@ async function runJob(job, options = {}) {
               height: renderHeight,
             });
         const submitResponse = await comfyuiClient.submitPrompt(payload);
-        const promptId = submitResponse?.prompt_id || submitResponse?.id || submitResponse?.promptId || null;
+        promptId = submitResponse?.prompt_id || submitResponse?.id || submitResponse?.promptId || null;
         if (!promptId) {
           const err = new AppError('COMFYUI_BAD_RESPONSE', 'ComfyUI prompt_id missing');
           manifest.recordPhase(paths.manifest, 'comfyui', 'failed', {
@@ -523,6 +525,7 @@ async function runJob(job, options = {}) {
         }
         manifest.recordPhase(paths.manifest, 'comfyui', 'completed', {
           workflow_id: workflowId,
+          prompt_id: promptId,
           chunk_size: frameCount,
           chunk_count: 1,
           output_kind: collectResult.output_kind,
@@ -531,6 +534,7 @@ async function runJob(job, options = {}) {
       } catch (err) {
         manifest.recordPhase(paths.manifest, 'comfyui', 'failed', {
           workflow_id: workflowId,
+          prompt_id: promptId,
           error: err.message,
           code: err.code,
         });
@@ -712,6 +716,20 @@ async function runJob(job, options = {}) {
         lipsync: lipsyncMode,
       },
     });
+
+    if (fs.existsSync(paths.tempDir)) {
+      try {
+        fs.rmSync(paths.tempDir, { recursive: true, force: true });
+        logger.log({ level: 'info', stage: 'cleanup', message: 'temp directory removed' });
+      } catch (err) {
+        logger.log({
+          level: 'warn',
+          stage: 'cleanup',
+          message: 'failed to remove temp directory',
+          error: err.message,
+        });
+      }
+    }
 
     manifest.markFinished(paths.manifest, 'success', { partial_reason: partialReason });
     logger.log({ level: 'info', stage: 'done', run_id: runId, message: 'job complete with encoded output' });
