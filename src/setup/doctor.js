@@ -3,7 +3,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const { AppError, mapErrorToExitCode } = require('../errors');
 const ComfyUIClient = require('../vidax/comfyuiClient');
-const { resolveCustomNodesDir } = require('./comfyPaths');
+const { resolveCustomNodesDir, resolveComfyPython } = require('./comfyPaths');
 
 function checkCommand(command, args = ['-version'], options = {}) {
   const { critical = true } = options;
@@ -44,6 +44,30 @@ function checkWav2LipWeights() {
 function extractNodeNames(objectInfo) {
   const nodes = objectInfo?.nodes || objectInfo?.data?.nodes || objectInfo?.data || {};
   return new Set(Object.keys(nodes || {}));
+}
+
+function checkTorchcodec() {
+  const pythonExe = resolveComfyPython();
+  try {
+    const result = spawnSync(pythonExe, ['-c', 'import torchcodec'], { encoding: 'utf-8' });
+    return {
+      name: 'comfyui:python:torchcodec',
+      ok: result.status === 0,
+      critical: true,
+      code: result.status === 0 ? null : 'PYTHON_DEPENDENCY_FAILED',
+      error: result.status === 0 ? null : result.stderr || result.stdout || 'torchcodec import failed',
+      details: { python: pythonExe, status: result.status, stdout: result.stdout, stderr: result.stderr },
+    };
+  } catch (err) {
+    return {
+      name: 'comfyui:python:torchcodec',
+      ok: false,
+      critical: true,
+      code: 'PYTHON_DEPENDENCY_FAILED',
+      error: err.message,
+      details: { python: pythonExe },
+    };
+  }
 }
 
 async function checkComfyui(client, options = {}) {
@@ -97,6 +121,7 @@ async function runDoctor(options = {}) {
     checkCommand('python', ['-V'], { critical: !!requirePython }),
   ];
   if (!skip_comfyui) {
+    checks.push(checkTorchcodec());
     const comfyuiClient = new ComfyUIClient(options.comfyui || {});
     const comfyChecks = await checkComfyui(comfyuiClient, options);
     checks.push(...comfyChecks);

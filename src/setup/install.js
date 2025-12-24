@@ -150,6 +150,28 @@ function installRepoRequirements(repoPath, pythonExe) {
   return { repo: repoPath, requirements: reqPath, python: pythonExe, action: 'installed' };
 }
 
+function installComfyAudioDependencies(pythonExe) {
+  const packages = ['torchcodec', 'imageio-ffmpeg'];
+  const result = spawnSync(pythonExe, ['-m', 'pip', 'install', ...packages], { encoding: 'utf-8' });
+  if (result.error) {
+    throw new AppError('PYTHON_DEPENDENCY_FAILED', 'python invocation failed', {
+      python: pythonExe,
+      error: result.error.message,
+      packages,
+    });
+  }
+  if (result.status !== 0) {
+    throw new AppError('PYTHON_DEPENDENCY_FAILED', 'failed to install python dependencies', {
+      python: pythonExe,
+      code: result.status,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      packages,
+    });
+  }
+  return { python: pythonExe, packages, action: 'installed' };
+}
+
 async function downloadModel(targetPath, sources) {
   if (fs.existsSync(targetPath)) {
     return { path: targetPath, action: 'present' };
@@ -220,6 +242,8 @@ async function runInstallFlow(options = {}) {
   } else {
     console.log('Skipping ComfyUI custom node install (install_comfy_nodes=false).');
   }
+  const comfyPython = comfyNodes?.python_executable || resolveComfyPython();
+  const pythonDependencies = installComfyAudioDependencies(comfyPython);
   return {
     state_dir: dirs.state_dir,
     comfy_root: dirs.comfy_root,
@@ -228,6 +252,8 @@ async function runInstallFlow(options = {}) {
     assets: assetsSummary,
     install_comfy_nodes: installComfyNodes,
     comfy_nodes: comfyNodes,
+    comfy_python: comfyPython,
+    python_dependencies: pythonDependencies,
   };
 }
 
