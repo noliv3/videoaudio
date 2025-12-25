@@ -485,19 +485,27 @@ class ComfyUIClient {
       const nodeErrors = this.extractNodeErrors(historyEntry?.raw);
       const hasError = historyEntry?.historyError || this.hasHistoryError(historyEntry?.raw);
       const summary = this.summarizeHistory(historyEntry);
+      const historyKeys = historyEntry?.raw ? Object.keys(historyEntry.raw || {}).slice(0, 5) : [];
+      const outputKeys = historyEntry?.raw?.outputs ? Object.keys(historyEntry.raw.outputs || {}).slice(0, 5) : [];
+      const compactMessages = historyMessages.slice(0, 5);
+      const compactNodeErrors = nodeErrors.slice(0, 5);
       if (hasError) {
         throw new AppError('COMFYUI_PROMPT_FAILED', historyEntry?.historyError || 'ComfyUI prompt failed', {
           prompt_id: promptId,
           history_error: historyEntry?.historyError || null,
-          node_errors: nodeErrors.length ? nodeErrors : undefined,
-          messages: historyMessages.length ? historyMessages : undefined,
+          node_errors: compactNodeErrors.length ? compactNodeErrors : undefined,
+          messages: compactMessages.length ? compactMessages : undefined,
+          history_keys: historyKeys.length ? historyKeys : undefined,
+          output_keys: outputKeys.length ? outputKeys : undefined,
         });
       }
       throw new AppError('COMFYUI_OUTPUTS_MISSING', 'ComfyUI outputs missing', {
         prompt_id: promptId,
         history: summary,
-        node_errors: nodeErrors.length ? nodeErrors : undefined,
-        messages: historyMessages.length ? historyMessages : undefined,
+        node_errors: compactNodeErrors.length ? compactNodeErrors : undefined,
+        messages: compactMessages.length ? compactMessages : undefined,
+        history_keys: historyKeys.length ? historyKeys : undefined,
+        output_keys: outputKeys.length ? outputKeys : undefined,
       });
     }
     const videoTarget = destPaths.videoPath;

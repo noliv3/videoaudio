@@ -51,21 +51,22 @@ function checkTorchcodec() {
   // torchcodec is optional because audio I/O runs through soundfile; we do not depend on torchaudio load/save.
   try {
     const result = spawnSync(pythonExe, ['-c', 'import torchcodec'], { encoding: 'utf-8' });
+    const ok = result.status === 0;
     return {
       name: 'comfyui:python:torchcodec',
-      ok: result.status === 0,
+      ok: true,
       critical: false,
-      code: result.status === 0 ? null : 'OPTIONAL_DEPENDENCY',
-      error: result.status === 0 ? null : result.stderr || result.stdout || 'torchcodec import failed',
+      code: ok ? null : 'OPTIONAL_DEPENDENCY',
+      warning: ok ? null : result.stderr || result.stdout || 'torchcodec import failed',
       details: { python: pythonExe, status: result.status, stdout: result.stdout, stderr: result.stderr },
     };
   } catch (err) {
     return {
       name: 'comfyui:python:torchcodec',
-      ok: false,
+      ok: true,
       critical: false,
       code: 'OPTIONAL_DEPENDENCY',
-      error: err.message,
+      warning: err.message,
       details: { python: pythonExe },
     };
   }
@@ -91,7 +92,7 @@ async function checkComfyui(client, options = {}) {
   const infoOk = !!objectInfo?.ok;
   const nodeNames = extractNodeNames(objectInfo);
   const requireVideoNodes = options.requireVideoNodes !== false;
-  const requiredNodes = ['LoadImage', 'RepeatImageBatch', 'LoadAudio', 'SaveImage', 'Wav2Lip'];
+  const requiredNodes = ['LoadImage', 'RepeatImageBatch', 'LoadAudio', 'SaveImage', 'VIDAX_Wav2Lip'];
   if (requireVideoNodes) {
     requiredNodes.push('VHS_LoadVideo');
   }
