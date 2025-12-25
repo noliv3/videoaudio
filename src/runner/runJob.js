@@ -808,17 +808,31 @@ async function runJob(job, options = {}) {
                 timeout_total: effectiveJob?.comfyui?.timeout_total ?? comfyuiClient.timeout,
                 poll_interval_ms: effectiveJob?.comfyui?.poll_interval_ms || 500,
               });
-              await comfyuiClient.collectOutputs(
+              const faceProbeOutputs = await comfyuiClient.collectOutputs(
                 faceProbePromptId,
                 { framesDir: paths.faceprobeDebugDir, comfyuiDir: paths.faceprobeDir },
-                {}
+                { allowMissing: true }
               );
-              logger.log({
-                level: 'info',
-                stage: 'comfyui',
-                message: 'faceprobe comfyui run completed',
-                prompt_id: faceProbePromptId,
-              });
+              if (faceProbeOutputs?.output_kind === 'missing') {
+                logger.log({
+                  level: 'warn',
+                  stage: 'comfyui',
+                  message: 'faceprobe comfyui run returned no outputs; continuing with local meta',
+                  prompt_id: faceProbePromptId,
+                  history: faceProbeOutputs.history || null,
+                  history_keys: faceProbeOutputs.history_keys,
+                  output_keys: faceProbeOutputs.output_keys,
+                  messages: faceProbeOutputs.messages,
+                  node_errors: faceProbeOutputs.node_errors,
+                });
+              } else {
+                logger.log({
+                  level: 'info',
+                  stage: 'comfyui',
+                  message: 'faceprobe comfyui run completed',
+                  prompt_id: faceProbePromptId,
+                });
+              }
             }
           } catch (err) {
             logger.log({
