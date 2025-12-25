@@ -92,7 +92,7 @@ async function checkComfyui(client, options = {}) {
   const infoOk = !!objectInfo?.ok;
   const nodeNames = extractNodeNames(objectInfo);
   const requireVideoNodes = options.requireVideoNodes !== false;
-  const requiredNodes = ['LoadImage', 'RepeatImageBatch', 'LoadAudio', 'SaveImage', 'VIDAX_Wav2Lip'];
+  const requiredNodes = ['LoadImage', 'RepeatImageBatch', 'SaveImage', 'VIDAX_Wav2Lip'];
   if (requireVideoNodes) {
     requiredNodes.push('VHS_LoadVideo');
   }

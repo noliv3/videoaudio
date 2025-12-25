@@ -72,25 +72,6 @@ function describeConfigStatus(baseDir = process.cwd()) {
   }));
 }
 
-function ensureBundledWorkflows(baseDir = process.cwd()) {
-  const created = [];
-  const bundles = [
-    {
-      example: path.join(baseDir, 'assets', 'workflows', 'vidax_text2img_frames.json'),
-      target: path.join(stateRoot, 'assets', 'workflows', 'vidax_text2img_frames.json'),
-    },
-  ];
-  bundles.forEach((pair) => {
-    if (!fs.existsSync(pair.example)) {
-      throw new AppError('INPUT_NOT_FOUND', 'bundled workflow missing', { example: pair.example });
-    }
-    fs.mkdirSync(path.dirname(pair.target), { recursive: true });
-    fs.copyFileSync(pair.example, pair.target);
-    created.push(pair.target);
-  });
-  return created;
-}
-
 function parseBool(value, fallback = true) {
   if (value === undefined || value === null) return fallback;
   if (typeof value === 'boolean') return value;
@@ -249,7 +230,6 @@ async function runInstallFlow(options = {}) {
   }
   const dirs = ensureStateDirs();
   const createdConfigs = ensureConfigFiles();
-  const bundledWorkflows = ensureBundledWorkflows();
   const manifestPath = assetsPath || resolveAssetsConfigPath();
   const assetsSummary = await ensureAllAssets(manifestPath, stateRoot, { install: true, strict: false });
   if (!assetsSummary.ok) {
@@ -268,7 +248,6 @@ async function runInstallFlow(options = {}) {
     state_dir: dirs.state_dir,
     comfy_root: dirs.comfy_root,
     created_configs: createdConfigs,
-    bundled_workflows: bundledWorkflows,
     assets: assetsSummary,
     install_comfy_nodes: installComfyNodes,
     comfy_nodes: comfyNodes,

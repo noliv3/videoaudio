@@ -11,14 +11,14 @@
   - `unpack=true` expects a zip archive; contents extract into `dest` with a marker `.asset-meta.json`.
   - `policy`: `{on_missing, on_hash_mismatch, allow_insecure_http}` defaults → `download`, `fail`, `false`.
   - Reale SHA-256-Werte sind Pflicht, Platzhalter werden nicht akzeptiert.
-  - Bundled Workflow `vidax_text2img_frames` bleibt als Referenz/Asset erhalten; der aktive Default ist ein inline Wav2Lip-Video-Graph und benötigt kein Workflow-File. Für optionale SDXL-Text2Img-Experimente wird weiterhin ein Checkpoint wie `sd_xl_base_1.0.safetensors` im ComfyUI-Models-Verzeichnis benötigt; das Manifest liefert keine Modelle aus.
+  - Der Legacy-Workflow `vidax_text2img_frames` ist entfernt; der Default-Manifest liefert eine leere `workflows`-Liste und verlässt sich ausschließlich auf inline gebaute Wav2Lip-Graphen. SDXL-Experimente benötigen weiterhin manuell platzierte Checkpoints (z. B. `sd_xl_base_1.0.safetensors`) im ComfyUI-Models-Verzeichnis; das Manifest liefert keine Modelle aus.
 - **Verification Rules**:
   - SHA-256 is enforced on downloads; mismatches raise `UNSUPPORTED_FORMAT`.
   - Existing files with mismatched hashes honor `on_hash_mismatch` (default fail).
   - Missing assets honor `on_missing` (default download; otherwise `INPUT_NOT_FOUND`).
   - `allow_insecure_http=false` blocks `http://` sources.
 - **Install/Check**:
-  - `va install` and `POST /install` perform downloads + verification; failures bubble as `UNSUPPORTED_FORMAT` for hash mismatches/download issues or `OUTPUT_WRITE_FAILED` for write/unzip errors. Gebündelte Workflows aus dem Repo werden zuerst nach `state/assets/workflows/` kopiert, sodass relative/file-Quellen offline installiert werden können.
+  - `va install` and `POST /install` perform downloads + verification; failures bubble as `UNSUPPORTED_FORMAT` for hash mismatches/download issues or `OUTPUT_WRITE_FAILED` for write/unzip errors. Install führt keine lokalen Workflow-Kopien mehr aus und verlässt sich ausschließlich auf das Manifest (das standardmäßig keine Workflows enthält).
   - `GET /install/status` reports `ok`/`missing`/`hash_mismatch`/`unknown` without downloading.
   - Job start prüft Assets nur blocking, wenn ComfyUI auto-gestartet werden muss; laufende Instanzen mit `ok`-Health überspringen Blocking, fehlende Einträge erscheinen weiterhin in den Status-Reports.
 - **Tooling Requirements**: `unzip` must exist on PATH for `unpack=true`. If absent, the asset stays uninstalled and the install step fails with `OUTPUT_WRITE_FAILED`.
