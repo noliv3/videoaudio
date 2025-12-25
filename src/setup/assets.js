@@ -67,7 +67,7 @@ function resolveSource(url, baseDir) {
 }
 
 async function downloadTo(url, dest, options = {}) {
-  const { allowInsecure = false, baseDir = null } = options;
+  const { allowInsecure = false, baseDir = null, maxRedirects = 5 } = options;
   const source = resolveSource(url, baseDir);
   if (source.type === 'file') {
     if (!fs.existsSync(source.path) || !fs.statSync(source.path).isFile()) {
@@ -77,26 +77,67 @@ async function downloadTo(url, dest, options = {}) {
     fs.copyFileSync(source.path, dest);
     return dest;
   }
+  const userAgent = 'VIDAX-Downloader/1.0';
   if (!allowInsecure && source.url.startsWith('http://')) {
     throw new AppError('UNSUPPORTED_FORMAT', 'insecure download blocked', { url: source.url });
   }
   fs.mkdirSync(path.dirname(dest), { recursive: true });
-  const client = source.url.startsWith('https://') ? https : http;
+  let currentUrl = source.url;
+  let redirects = 0;
   return new Promise((resolve, reject) => {
-    const request = client.get(source.url, (response) => {
-      if (response.statusCode !== 200) {
-        reject(new AppError('INPUT_NOT_FOUND', 'asset download failed', { url: source.url, status: response.statusCode }));
-        return;
-      }
-      streamPipeline(response, fs.createWriteStream(dest))
-        .then(() => resolve(dest))
-        .catch((err) =>
-          reject(new AppError('OUTPUT_WRITE_FAILED', 'asset write failed', { url: source.url, dest, error: err.message }))
-        );
-    });
-    request.on('error', (err) =>
-      reject(new AppError('INPUT_NOT_FOUND', 'asset download failed', { url: source.url, error: err.message }))
-    );
+    const attempt = () => {
+      const client = currentUrl.startsWith('https://') ? https : http;
+      const request = client.get(currentUrl, { headers: { 'User-Agent': userAgent } }, (response) => {
+        const location = response.headers?.location;
+        if ([301, 302, 303, 307, 308].includes(response.statusCode) && location && redirects < maxRedirects) {
+          response.resume();
+          redirects += 1;
+          try {
+            const nextUrl = new URL(location, currentUrl).toString();
+            if (!allowInsecure && nextUrl.startsWith('http://')) {
+              reject(new AppError('UNSUPPORTED_FORMAT', 'insecure download blocked', { url: nextUrl, redirected_from: currentUrl }));
+              return;
+            }
+            currentUrl = nextUrl;
+            attempt();
+            return;
+          } catch (err) {
+            reject(new AppError('INPUT_NOT_FOUND', 'asset redirect resolution failed', { url: currentUrl, location, error: err.message }));
+            return;
+          }
+        }
+        if (response.statusCode !== 200) {
+          response.resume();
+          reject(
+            new AppError('INPUT_NOT_FOUND', 'asset download failed', {
+              url: source.url,
+              final_url: currentUrl,
+              status: response.statusCode,
+            })
+          );
+          return;
+        }
+        streamPipeline(response, fs.createWriteStream(dest))
+          .then(() => resolve(dest))
+          .catch((err) =>
+            reject(
+              new AppError('OUTPUT_WRITE_FAILED', 'asset write failed', {
+                url: source.url,
+                final_url: currentUrl,
+                dest,
+                error: err.message,
+              })
+            )
+          );
+      });
+      request.on('error', (err) =>
+        reject(new AppError('INPUT_NOT_FOUND', 'asset download failed', { url: source.url, final_url: currentUrl, error: err.message }))
+      );
+      request.setTimeout(60000, () => {
+        request.destroy(new Error('download timeout'));
+      });
+    };
+    attempt();
   });
 }
 

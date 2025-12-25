@@ -69,7 +69,7 @@ function extractComfyNodeNames(objectInfo) {
 
 function validateComfyuiNodes(objectInfo, startSourceKind) {
   const nodeNames = extractComfyNodeNames(objectInfo);
-  const required = ['LoadImage', 'RepeatImageBatch', 'LoadAudio', 'SaveImage', 'Wav2Lip'];
+  const required = ['LoadImage', 'RepeatImageBatch', 'LoadAudio', 'SaveImage', 'VIDAX_Wav2Lip'];
   if (startSourceKind === 'start_video') {
     required.push('VHS_LoadVideo');
   }
@@ -872,6 +872,7 @@ async function runJob(job, options = {}) {
             fps: (motionMeta && motionMeta.fps) || prepareDetails.fps,
             wav2lipMode: effectiveJob?.comfyui?.wav2lip?.mode,
             faceDetectBatch: effectiveJob?.comfyui?.wav2lip?.face_detect_batch,
+            onNoFace: effectiveJob?.comfyui?.wav2lip?.on_no_face || effectiveJob?.comfyui?.wav2lip?.onNoFace,
             outputPrefix: `${comfyOutputPrefix}_mouthblend`,
           });
           const mouthSubmit = await comfyuiClient.submitPrompt(mouthPayload);
@@ -915,24 +916,26 @@ async function runJob(job, options = {}) {
           const payload = normalizedJob.input.start_image
             ? buildVidaxWav2LipImagePrompt({
                 startImageName: startInputName,
-                audioName: audioInputName,
-                fps: prepareDetails.fps,
-                frameCount: comfyFrameCount,
-                wav2lipMode: effectiveJob?.comfyui?.wav2lip?.mode,
-                faceDetectBatch: effectiveJob?.comfyui?.wav2lip?.face_detect_batch,
-                outputPrefix: comfyOutputPrefix,
-              })
+              audioName: audioInputName,
+              fps: prepareDetails.fps,
+              frameCount: comfyFrameCount,
+              wav2lipMode: effectiveJob?.comfyui?.wav2lip?.mode,
+              faceDetectBatch: effectiveJob?.comfyui?.wav2lip?.face_detect_batch,
+              onNoFace: effectiveJob?.comfyui?.wav2lip?.on_no_face || effectiveJob?.comfyui?.wav2lip?.onNoFace,
+              outputPrefix: comfyOutputPrefix,
+            })
             : buildVidaxWav2LipVideoPrompt({
                 startVideoName: startInputName,
                 audioName: audioInputName,
                 fps: prepareDetails.fps,
-                frameCount: comfyFrameCount,
-                width: renderWidth,
-                height: renderHeight,
-                wav2lipMode: effectiveJob?.comfyui?.wav2lip?.mode,
-                faceDetectBatch: effectiveJob?.comfyui?.wav2lip?.face_detect_batch,
-                outputPrefix: comfyOutputPrefix,
-              });
+              frameCount: comfyFrameCount,
+              width: renderWidth,
+              height: renderHeight,
+              wav2lipMode: effectiveJob?.comfyui?.wav2lip?.mode,
+              faceDetectBatch: effectiveJob?.comfyui?.wav2lip?.face_detect_batch,
+              onNoFace: effectiveJob?.comfyui?.wav2lip?.on_no_face || effectiveJob?.comfyui?.wav2lip?.onNoFace,
+              outputPrefix: comfyOutputPrefix,
+            });
           const submitResponse = await comfyuiClient.submitPrompt(payload);
           promptId = submitResponse?.prompt_id || submitResponse?.id || submitResponse?.promptId || null;
           if (!promptId) {

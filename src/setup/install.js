@@ -9,13 +9,13 @@ const { resolveCustomNodesDir, resolveComfyPython } = require('./comfyPaths');
 
 const defaultWav2LipSources = [
   process.env.WAV2LIP_GAN_URL,
-  'https://github.com/Rudrabha/Wav2Lip/releases/download/v0.1/wav2lip_gan.pth',
+  'https://huggingface.co/camenduru/Wav2Lip/resolve/main/checkpoints/wav2lip_gan.pth',
   'https://huggingface.co/akhaliq/Wav2Lip/resolve/main/wav2lip_gan.pth',
 ].filter(Boolean);
 
 const defaultS3fdSources = [
   process.env.S3FD_MODEL_URL,
-  'https://github.com/Rudrabha/Wav2Lip/releases/download/v0.1/s3fd.pth',
+  'https://huggingface.co/camenduru/Wav2Lip/resolve/main/checkpoints/s3fd-619a316812.pth',
   'https://huggingface.co/akhaliq/Wav2Lip/resolve/main/s3fd.pth',
 ].filter(Boolean);
 
@@ -191,6 +191,8 @@ async function downloadModel(targetPath, sources) {
 async function installComfyCustomNodes() {
   const customNodesDir = resolveCustomNodesDir();
   fs.mkdirSync(customNodesDir, { recursive: true });
+  const vidaxNodeSource = path.join(process.cwd(), 'comfyui', 'custom_nodes', 'vidax_wav2lip');
+  const vidaxNodeTarget = path.join(customNodesDir, 'vidax_wav2lip');
   const repos = [
     { name: 'ComfyUI-VideoHelperSuite', url: 'https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git' },
     { name: 'ComfyUI_wav2lip', url: 'https://github.com/ShmuelRonen/ComfyUI_wav2lip.git' },
@@ -218,7 +220,21 @@ async function installComfyCustomNodes() {
     await downloadModel(s3fdPath, defaultS3fdSources),
   ];
 
-  return { base_dir: customNodesDir, repos: repoResults, models, python_installs: pythonInstalls, python_executable: pythonExe };
+  if (!fs.existsSync(vidaxNodeSource)) {
+    throw new AppError('INPUT_NOT_FOUND', 'vidax_wav2lip node sources missing', { source: vidaxNodeSource });
+  }
+  fs.rmSync(vidaxNodeTarget, { recursive: true, force: true });
+  fs.cpSync(vidaxNodeSource, vidaxNodeTarget, { recursive: true });
+  const vidaxNode = { source: vidaxNodeSource, target: vidaxNodeTarget, action: 'copied' };
+
+  return {
+    base_dir: customNodesDir,
+    repos: repoResults,
+    models,
+    python_installs: pythonInstalls,
+    python_executable: pythonExe,
+    vidax_node: vidaxNode,
+  };
 }
 
 async function runInstallFlow(options = {}) {

@@ -1,6 +1,6 @@
 # ComfyUI Assets Manifest & Handling
 
-- **Manifest Location**: Resolution order `VIDAX_ASSETS_CONFIG` → `VA_STATE_DIR/state/config/assets.json` → `config/assets.json` (CWD). Paths can be absolute or relative; `~/` is expanded; relative und `file://`-Pfade werden relativ zum Manifest-Ordner aufgelöst.
+- **Manifest Location**: Resolution order `VIDAX_ASSETS_CONFIG` → `VA_STATE_DIR/state/config/assets.json` → `config/assets.json` (CWD). Paths can be absolute or relative; `~/` is expanded; relative und `file://`-Pfade werden relativ zum Manifest-Ordner aufgelöst. HTTP-Downloads folgen Redirects (301/302/303/307/308, bis zu 5 Hops) mit gesetztem User-Agent.
 - **StateDir Target**: Assets install into `VA_STATE_DIR/state` (default `~/.va/state`):
   - Workflows → `comfyui/workflows/`
   - Models → `comfyui/models/`

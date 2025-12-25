@@ -23,6 +23,7 @@ function buildVidaxWav2LipImagePrompt(options = {}) {
   const faceDetectBatch = asPositiveInt(options.faceDetectBatch, 8) || 8;
   const filenamePrefix =
     options.outputPrefix || options.filenamePrefix || options.output_prefix || options.workdirPrefix || 'vidax_wav2lip';
+  const onNoFace = options.onNoFace || options.on_no_face || 'passthrough';
 
   return {
     prompt: {
@@ -42,12 +43,13 @@ function buildVidaxWav2LipImagePrompt(options = {}) {
         inputs: { audio: audioName },
       },
       4: {
-        class_type: 'Wav2Lip',
+        class_type: 'VIDAX_Wav2Lip',
         inputs: {
           images: ['2', 0],
           audio: ['3', 0],
           mode: wav2lipMode,
           face_detect_batch: faceDetectBatch,
+          on_no_face: onNoFace,
         },
       },
       5: {
@@ -69,6 +71,7 @@ function buildVidaxWav2LipVideoPrompt(options = {}) {
   const faceDetectBatch = asPositiveInt(options.faceDetectBatch, 8) || 8;
   const filenamePrefix =
     options.outputPrefix || options.filenamePrefix || options.output_prefix || options.workdirPrefix || 'vidax_wav2lip';
+  const onNoFace = options.onNoFace || options.on_no_face || 'passthrough';
 
   return {
     prompt: {
@@ -88,12 +91,13 @@ function buildVidaxWav2LipVideoPrompt(options = {}) {
         inputs: { audio: audioName },
       },
       3: {
-        class_type: 'Wav2Lip',
+        class_type: 'VIDAX_Wav2Lip',
         inputs: {
           images: ['1', 0],
           audio: ['2', 0],
           mode: wav2lipMode,
           face_detect_batch: faceDetectBatch,
+          on_no_face: onNoFace,
         },
       },
       4: {
@@ -158,6 +162,7 @@ function buildVidaxLipsyncMouthBlendPrompt(options = {}) {
   const filenamePrefix = options.outputPrefix || 'vidax_mouthblend';
   const wav2lipMode = options.wav2lipMode ?? 'sequential';
   const faceDetectBatch = asPositiveInt(options.faceDetectBatch, 8) || 8;
+  const onNoFace = options.onNoFace || options.on_no_face || 'passthrough';
   return {
     prompt: {
       1: { class_type: 'LoadImage', inputs: { image: startImageName } },
@@ -167,12 +172,13 @@ function buildVidaxLipsyncMouthBlendPrompt(options = {}) {
       },
       3: { class_type: 'LoadAudio', inputs: { audio: audioName } },
       4: {
-        class_type: 'Wav2Lip',
+        class_type: 'VIDAX_Wav2Lip',
         inputs: {
           images: ['2', 0],
           audio: ['3', 0],
           mode: wav2lipMode,
           face_detect_batch: faceDetectBatch,
+          on_no_face: onNoFace,
         },
       },
       5: { class_type: 'SaveImage', inputs: { images: ['4', 0], filename_prefix: filenamePrefix } },
