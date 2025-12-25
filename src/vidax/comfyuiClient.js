@@ -484,6 +484,7 @@ class ComfyUIClient {
 
   async collectOutputs(promptId, destPaths = {}, options = {}) {
     const outputs = options.outputs || [];
+    const allowMissing = options.allowMissing || options.allow_missing || false;
     if (!outputs.length) {
       const historyEntry = promptId ? await this.fetchHistory(promptId, { directOnly: true }) : null;
       const historyMessages = this.extractHistoryMessages(historyEntry?.raw);
@@ -503,6 +504,17 @@ class ComfyUIClient {
           history_keys: historyKeys.length ? historyKeys : undefined,
           output_keys: outputKeys.length ? outputKeys : undefined,
         });
+      }
+      if (allowMissing) {
+        return {
+          output_kind: 'missing',
+          output_paths: [],
+          history: summary,
+          history_keys: historyKeys.length ? historyKeys : undefined,
+          output_keys: outputKeys.length ? outputKeys : undefined,
+          messages: compactMessages.length ? compactMessages : undefined,
+          node_errors: compactNodeErrors.length ? compactNodeErrors : undefined,
+        };
       }
       throw new AppError('COMFYUI_OUTPUTS_MISSING', 'ComfyUI outputs missing', {
         prompt_id: promptId,
