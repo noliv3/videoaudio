@@ -14,12 +14,19 @@ function asPositiveNumber(value, fallback) {
   return fallback;
 }
 
+function normalizeWav2LipMode(value) {
+  if (value === 'repetitive') {
+    return 'repetitive';
+  }
+  return 'sequential';
+}
+
 function buildVidaxWav2LipImagePrompt(options = {}) {
   const frameCount = asPositiveInt(options.frameCount, 1) || 1;
   const fps = asPositiveInt(options.fps, 25) || 25;
   const startImageName = options.startImageName;
   const audioName = options.audioName;
-  const wav2lipMode = options.wav2lipMode ?? 'sequential';
+  const wav2lipMode = normalizeWav2LipMode(options.wav2lipMode);
   const faceDetectBatch = asPositiveInt(options.faceDetectBatch, 8) || 8;
   const filenamePrefix =
     options.outputPrefix || options.filenamePrefix || options.output_prefix || options.workdirPrefix || 'vidax_wav2lip';
@@ -67,7 +74,7 @@ function buildVidaxWav2LipVideoPrompt(options = {}) {
   const height = asPositiveInt(options.height, 480) || 480;
   const startVideoName = options.startVideoName;
   const audioName = options.audioName;
-  const wav2lipMode = options.wav2lipMode ?? 'sequential';
+  const wav2lipMode = normalizeWav2LipMode(options.wav2lipMode);
   const faceDetectBatch = asPositiveInt(options.faceDetectBatch, 8) || 8;
   const filenamePrefix =
     options.outputPrefix || options.filenamePrefix || options.output_prefix || options.workdirPrefix || 'vidax_wav2lip';
@@ -160,7 +167,7 @@ function buildVidaxLipsyncMouthBlendPrompt(options = {}) {
   const audioName = options.audioName;
   const startImageName = options.startImageName;
   const filenamePrefix = options.outputPrefix || 'vidax_mouthblend';
-  const wav2lipMode = options.wav2lipMode ?? 'sequential';
+  const wav2lipMode = normalizeWav2LipMode(options.wav2lipMode);
   const faceDetectBatch = asPositiveInt(options.faceDetectBatch, 8) || 8;
   const onNoFace = options.onNoFace || options.on_no_face || 'passthrough';
   return {
