@@ -11,6 +11,7 @@ const {
   getFfprobeVersion,
   muxAudioVideo,
   createStillVideo,
+  createMotionVideoFromImage,
   padAudio,
   createVideoFromFrames,
   concatVideos,
