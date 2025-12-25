@@ -37,6 +37,11 @@ function ensureFfmpeg(result, context) {
   }
 }
 
+function signed(n) {
+  const fixed = Number(n || 0).toFixed(6);
+  return n >= 0 ? `+${fixed}` : fixed;
+}
+
 function probeMediaDurations(filePath) {
   const result = spawnSync('ffprobe', [
     '-v',
@@ -218,25 +223,7 @@ function createMotionVideoFromImage({
       outPath,
     });
   }
-  const frames = Math.max(1, Math.ceil(durationSeconds * fps));
-  const seedValue = Number.isFinite(Number(seed)) ? Number(seed) : 0;
-  const phase = (offset) => {
-    const value = Math.sin(seedValue + offset) * 10000;
-    return value - Math.floor(value);
-  };
-  const zoomDirection = phase(1) > 0.5 ? 1 : -1;
-  const startZoom = 1 + 0.02 + phase(2) * 0.03;
-  const targetZoom = startZoom + zoomDirection * (0.04 + phase(3) * 0.06);
-  const zoomStep = (targetZoom - startZoom) / frames;
-  const panRangeX = (phase(4) - 0.5) * 0.12;
-  const panRangeY = (phase(5) - 0.5) * 0.12;
-  const zoomExpr = `zoom+${zoomStep.toFixed(6)}`;
-  const xExpr = `iw/2-(iw/zoom)/2+${panRangeX.toFixed(6)}*iw*on/${frames}`;
-  const yExpr = `ih/2-(ih/zoom)/2+${panRangeY.toFixed(6)}*ih*on/${frames}`;
-  const sizeExpr = targetWidth && targetHeight ? `${targetWidth}x${targetHeight}` : 'iw:ih';
-  const filter =
-    `[0:v]format=rgba,zoompan=z='${zoomExpr}':x='${xExpr}':y='${yExpr}':d=${frames}:s=${sizeExpr}:fps=${fps},` +
-    `zoom='min(max(${startZoom.toFixed(6)},zoom),${targetZoom.toFixed(6)})',format=yuv420p[v]`;
+  const { filter } = buildMotionFilterSpec({ fps, durationSeconds, targetWidth, targetHeight, seed });
   const args = [
     '-y',
     '-loop',
@@ -260,9 +247,38 @@ function createMotionVideoFromImage({
   const result = spawnSync('ffmpeg', args, { encoding: 'utf-8' });
   ensureFfmpeg(result, 'motion_video');
   if (!fs.existsSync(outPath)) {
-    throw new AppError('FFMPEG_FAILED', 'motion video not produced', { outPath });
+    throw new AppError('FFMPEG_FAILED', 'motion_video output missing', { outPath });
   }
   return outPath;
+}
+
+function buildMotionFilterSpec({ fps, durationSeconds, targetWidth, targetHeight, seed }) {
+  const frames = Math.max(2, Math.ceil(durationSeconds * fps));
+  const denom = Math.max(1, frames - 1);
+  const seedValue = Number.isFinite(Number(seed)) ? Number(seed) : 0;
+  const phase = (offset) => {
+    const value = Math.sin(seedValue + offset) * 10000;
+    return value - Math.floor(value);
+  };
+  const zoomDirection = phase(1) > 0.5 ? 1 : -1;
+  const startZoom = 1 + 0.02 + phase(2) * 0.03;
+  const targetZoom = startZoom + zoomDirection * (0.04 + phase(3) * 0.06);
+  const panRangeX = (phase(4) - 0.5) * 0.12;
+  const panRangeY = (phase(5) - 0.5) * 0.12;
+  const zoomDiff = targetZoom - startZoom;
+  const zExpr = `${startZoom.toFixed(6)}+(${zoomDiff.toFixed(6)})*on/${denom}`;
+  const xExpr = `max(min(iw-(iw/zoom),iw/2-(iw/zoom)/2${signed(panRangeX)}*iw*on/${denom}),0)`;
+  const yExpr = `max(min(ih-(ih/zoom),ih/2-(ih/zoom)/2${signed(panRangeY)}*ih*on/${denom}),0)`;
+  const sizeExpr = targetWidth && targetHeight ? `${targetWidth}x${targetHeight}` : 'iw:ih';
+  const preScale =
+    targetWidth && targetHeight ? `scale=${targetWidth}:${targetHeight}:flags=lanczos,crop=${targetWidth}:${targetHeight}` : null;
+  const filterParts = ['format=rgba'];
+  if (preScale) {
+    filterParts.push(preScale);
+  }
+  filterParts.push(`zoompan=z='${zExpr}':x='${xExpr}':y='${yExpr}':d=${frames}:s=${sizeExpr}:fps=${fps}`, 'format=yuv420p');
+  const filter = `[0:v]${filterParts.join(',')}[v]`;
+  return { filter, frames };
 }
 
 function padAudio({ audioInput, preSeconds = 0, postSeconds = 0, targetDurationSeconds, outPath }) {
@@ -387,4 +403,5 @@ module.exports = {
   padAudio,
   createVideoFromFrames,
   concatVideos,
+  buildMotionFilterSpec,
 };
