@@ -437,6 +437,38 @@ function ensureMotionBaseVideo(options = {}) {
   throw new AppError('INPUT_NOT_FOUND', 'no start source for fallback video');
 }
 
+function ensureMotionBaseOrStill(options = {}) {
+  try {
+    const source = ensureMotionBaseVideo(options);
+    return { source, degraded: false, degradedReason: null };
+  } catch (err) {
+    if (!options?.job?.input?.start_image) {
+      throw err;
+    }
+    const stillPath = options.paths.motionBaseVideo || path.join(options.paths.tempDir || options.paths.base || '', 'motion_base.mp4');
+    createStillVideo({
+      imagePath: options.job.input.start_image,
+      fps: options.fps,
+      durationSeconds: options.visualTargetDurationSeconds,
+      outPath: stillPath,
+      targetWidth: options.renderWidth,
+      targetHeight: options.renderHeight,
+    });
+    options.logger?.log({
+      level: 'warn',
+      stage: 'fallback',
+      message: 'motion_base failed; using emergency still video',
+      error: err.message,
+      out_path: stillPath,
+    });
+    return {
+      source: { kind: 'still_emergency', path: stillPath, isImageSequence: false },
+      degraded: true,
+      degradedReason: 'MOTION_VIDEO_FAILED',
+    };
+  }
+}
+
 async function runJob(job, options = {}) {
   const validation = validateJob(job);
   if (!validation.valid) {
@@ -1005,7 +1037,7 @@ async function runJob(job, options = {}) {
     if (comfyEnabled && !videoSource) {
       degraded = true;
       degradedReason = degradedReason || 'COMFYUI_OUTPUTS_MISSING';
-      videoSource = ensureMotionBaseVideo({
+      const motionFallback = ensureMotionBaseOrStill({
         job: normalizedJob,
         paths,
         visualTargetDurationSeconds,
@@ -1015,9 +1047,14 @@ async function runJob(job, options = {}) {
         seed: comfyuiSeedInfo.seed,
         logger,
       });
+      videoSource = motionFallback.source;
+      if (motionFallback.degraded) {
+        degraded = true;
+        degradedReason = 'MOTION_VIDEO_FAILED';
+      }
     }
     if (!videoSource) {
-      videoSource = ensureMotionBaseVideo({
+      const motionFallback = ensureMotionBaseOrStill({
         job: normalizedJob,
         paths,
         visualTargetDurationSeconds,
@@ -1027,6 +1064,11 @@ async function runJob(job, options = {}) {
         seed: comfyuiSeedInfo.seed,
         logger,
       });
+      videoSource = motionFallback.source;
+      if (motionFallback.degraded) {
+        degraded = true;
+        degradedReason = 'MOTION_VIDEO_FAILED';
+      }
     }
     let encodeVideoSource = videoSource;
 
