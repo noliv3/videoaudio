@@ -21,6 +21,260 @@ function normalizeWav2LipMode(value) {
   return 'sequential';
 }
 
+function asMode(value) {
+  return value === 'video' ? 'video' : 'image';
+}
+
+function asLipsyncFlag(value) {
+  if (value === false || value === 'off') return false;
+  return true;
+}
+
+function buildUiWorkflowNode({ id, type, pos, size, inputs = [], outputs = [], widgets = [], order = 0 }) {
+  return {
+    id,
+    type,
+    pos,
+    size,
+    flags: {},
+    order,
+    mode: 0,
+    inputs,
+    outputs,
+    properties: { 'Node name for S&R': type },
+    widgets_values: widgets,
+  };
+}
+
+function buildUiWorkflow({ mode = 'image', lipsync = 'on' } = {}) {
+  const normalizedMode = asMode(mode);
+  const lipsyncEnabled = asLipsyncFlag(lipsync);
+  const nodes = [];
+  const links = [];
+  let nextNodeId = 1;
+  let nextLinkId = 1;
+
+  const createLink = (sourceNode, sourceSlot, targetNode, targetSlot, typeName) => {
+    const linkId = nextLinkId++;
+    const link = [linkId, sourceNode.id, sourceSlot, targetNode.id, targetSlot, typeName];
+    links.push(link);
+    if (sourceNode.outputs?.[sourceSlot]) {
+      sourceNode.outputs[sourceSlot].links = sourceNode.outputs[sourceSlot].links || [];
+      sourceNode.outputs[sourceSlot].links.push(linkId);
+    }
+    if (targetNode.inputs?.[targetSlot]) {
+      targetNode.inputs[targetSlot].link = linkId;
+    }
+    return linkId;
+  };
+
+  if (normalizedMode === 'image') {
+    const loadImage = buildUiWorkflowNode({
+      id: nextNodeId++,
+      type: 'LoadImage',
+      pos: [-600, -100],
+      size: [220, 140],
+      outputs: [{ name: 'IMAGE', type: 'IMAGE', links: [], slot_index: 0 }],
+      widgets: ['', 'image'],
+    });
+
+    if (lipsyncEnabled) {
+      const repeatBatch = buildUiWorkflowNode({
+        id: nextNodeId++,
+        type: 'RepeatImageBatch',
+        pos: [-340, -100],
+        size: [220, 170],
+        inputs: [
+          { name: 'image', type: 'IMAGE', link: null },
+          { name: 'amount', type: 'INT', link: null, default: 25 },
+        ],
+        outputs: [{ name: 'IMAGE', type: 'IMAGE', links: [], slot_index: 0 }],
+        widgets: [25],
+        order: 1,
+      });
+
+      const loadAudio = buildUiWorkflowNode({
+        id: nextNodeId++,
+        type: 'LoadAudio',
+        pos: [-340, 160],
+        size: [220, 120],
+        outputs: [{ name: 'AUDIO', type: 'AUDIO', links: [], slot_index: 0 }],
+        widgets: [''],
+        order: 2,
+      });
+
+      const wav2lip = buildUiWorkflowNode({
+        id: nextNodeId++,
+        type: 'VIDAX_Wav2Lip',
+        pos: [0, 40],
+        size: [320, 200],
+        inputs: [
+          { name: 'images', type: 'IMAGE', link: null },
+          { name: 'audio', type: 'AUDIO', link: null },
+          { name: 'mode', type: 'STRING', link: null },
+          { name: 'face_detect_batch', type: 'INT', link: null },
+          { name: 'on_no_face', type: 'STRING', link: null },
+        ],
+        outputs: [{ name: 'IMAGE', type: 'IMAGE', links: [], slot_index: 0 }],
+        widgets: ['sequential', 8, 'passthrough'],
+        order: 3,
+      });
+
+      const saveImage = buildUiWorkflowNode({
+        id: nextNodeId++,
+        type: 'SaveImage',
+        pos: [360, 40],
+        size: [250, 140],
+        inputs: [
+          { name: 'images', type: 'IMAGE', link: null },
+          { name: 'filename_prefix', type: 'STRING', link: null },
+        ],
+        widgets: ['vidax_export'],
+        order: 4,
+      });
+
+      createLink(loadImage, 0, repeatBatch, 0, 'IMAGE');
+      createLink(repeatBatch, 0, wav2lip, 0, 'IMAGE');
+      createLink(loadAudio, 0, wav2lip, 1, 'AUDIO');
+      createLink(wav2lip, 0, saveImage, 0, 'IMAGE');
+
+      saveImage.inputs[1].link = null;
+      saveImage.inputs[1].default = 'vidax_export';
+
+      nodes.push(loadImage, repeatBatch, loadAudio, wav2lip, saveImage);
+    } else {
+      const repeatBatch = buildUiWorkflowNode({
+        id: nextNodeId++,
+        type: 'RepeatImageBatch',
+        pos: [-340, -40],
+        size: [220, 170],
+        inputs: [
+          { name: 'image', type: 'IMAGE', link: null },
+          { name: 'amount', type: 'INT', link: null, default: 25 },
+        ],
+        outputs: [{ name: 'IMAGE', type: 'IMAGE', links: [], slot_index: 0 }],
+        widgets: [25],
+        order: 1,
+      });
+
+      const saveImage = buildUiWorkflowNode({
+        id: nextNodeId++,
+        type: 'SaveImage',
+        pos: [40, -40],
+        size: [250, 140],
+        inputs: [
+          { name: 'images', type: 'IMAGE', link: null },
+          { name: 'filename_prefix', type: 'STRING', link: null },
+        ],
+        widgets: ['vidax_export'],
+        order: 2,
+      });
+
+      createLink(loadImage, 0, repeatBatch, 0, 'IMAGE');
+      createLink(repeatBatch, 0, saveImage, 0, 'IMAGE');
+
+      saveImage.inputs[1].link = null;
+      saveImage.inputs[1].default = 'vidax_export';
+
+      nodes.push(loadImage, repeatBatch, saveImage);
+    }
+  } else {
+    const loadVideo = buildUiWorkflowNode({
+      id: nextNodeId++,
+      type: 'VHS_LoadVideo',
+      pos: [-600, -40],
+      size: [240, 180],
+      outputs: [{ name: 'IMAGE', type: 'IMAGE', links: [], slot_index: 0 }],
+      widgets: ['', 'video', 25, 0, 0, 'Custom', 854, 480],
+    });
+
+    if (lipsyncEnabled) {
+      const loadAudio = buildUiWorkflowNode({
+        id: nextNodeId++,
+        type: 'LoadAudio',
+        pos: [-600, 200],
+        size: [220, 120],
+        outputs: [{ name: 'AUDIO', type: 'AUDIO', links: [], slot_index: 0 }],
+        widgets: [''],
+        order: 1,
+      });
+
+      const wav2lip = buildUiWorkflowNode({
+        id: nextNodeId++,
+        type: 'VIDAX_Wav2Lip',
+        pos: [-280, 80],
+        size: [320, 200],
+        inputs: [
+          { name: 'images', type: 'IMAGE', link: null },
+          { name: 'audio', type: 'AUDIO', link: null },
+          { name: 'mode', type: 'STRING', link: null },
+          { name: 'face_detect_batch', type: 'INT', link: null },
+          { name: 'on_no_face', type: 'STRING', link: null },
+        ],
+        outputs: [{ name: 'IMAGE', type: 'IMAGE', links: [], slot_index: 0 }],
+        widgets: ['sequential', 8, 'passthrough'],
+        order: 2,
+      });
+
+      const saveImage = buildUiWorkflowNode({
+        id: nextNodeId++,
+        type: 'SaveImage',
+        pos: [80, 80],
+        size: [250, 140],
+        inputs: [
+          { name: 'images', type: 'IMAGE', link: null },
+          { name: 'filename_prefix', type: 'STRING', link: null },
+        ],
+        widgets: ['vidax_export'],
+        order: 3,
+      });
+
+      createLink(loadVideo, 0, wav2lip, 0, 'IMAGE');
+      createLink(loadAudio, 0, wav2lip, 1, 'AUDIO');
+      createLink(wav2lip, 0, saveImage, 0, 'IMAGE');
+
+      saveImage.inputs[1].link = null;
+      saveImage.inputs[1].default = 'vidax_export';
+
+      nodes.push(loadVideo, loadAudio, wav2lip, saveImage);
+    } else {
+      const saveImage = buildUiWorkflowNode({
+        id: nextNodeId++,
+        type: 'SaveImage',
+        pos: [-280, -20],
+        size: [250, 140],
+        inputs: [
+          { name: 'images', type: 'IMAGE', link: null },
+          { name: 'filename_prefix', type: 'STRING', link: null },
+        ],
+        widgets: ['vidax_export'],
+        order: 1,
+      });
+
+      createLink(loadVideo, 0, saveImage, 0, 'IMAGE');
+
+      saveImage.inputs[1].link = null;
+      saveImage.inputs[1].default = 'vidax_export';
+
+      nodes.push(loadVideo, saveImage);
+    }
+  }
+
+  const lastNodeId = nodes.reduce((maxId, node) => Math.max(maxId, node.id), 0) || 0;
+  const lastLinkId = links.reduce((maxId, link) => Math.max(maxId, link[0]), 0) || 0;
+
+  return {
+    last_node_id: lastNodeId,
+    last_link_id: lastLinkId,
+    nodes,
+    links,
+    groups: [],
+    config: {},
+    extra: {},
+    version: 1,
+  };
+}
+
 function buildVidaxWav2LipImagePrompt(options = {}) {
   const frameCount = asPositiveInt(options.frameCount, 1) || 1;
   const fps = asPositiveInt(options.fps, 25) || 25;
@@ -200,4 +454,5 @@ module.exports = {
   buildVidaxFaceProbePrompt,
   buildVidaxMotionChunksPrompt,
   buildVidaxLipsyncMouthBlendPrompt,
+  buildUiWorkflow,
 };

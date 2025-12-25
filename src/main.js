@@ -11,6 +11,7 @@ const { AppError, mapErrorToExitCode } = require('./errors');
 const { runInstallFlow, runInstallTest } = require('./setup/install');
 const { runDoctor } = require('./setup/doctor');
 const { buildProduceJob } = require('./runner/produce');
+const { buildUiWorkflow } = require('./runner/comfyPromptBuilder');
 const ComfyUIClient = require('./vidax/comfyuiClient');
 
 function loadJob(file) {
@@ -245,6 +246,22 @@ yargs(hideBin(process.argv))
       if (result.comfy_nodes) {
         console.log(`Custom nodes dir: ${result.comfy_nodes.base_dir}`);
       }
+    } catch (err) {
+      exitWithError(err);
+    }
+  })
+  .command('export-workflow', 'export the VIDAX ComfyUI workflow in UI format', (y) => y
+    .option('out', { type: 'string', describe: 'output path', default: null })
+    .option('mode', { choices: ['image', 'video'], default: 'image', describe: 'start source mode' })
+    .option('lipsync', { choices: ['on', 'off'], default: 'on', describe: 'include lipsync nodes' }),
+  async (args) => {
+    try {
+      const workflow = buildUiWorkflow({ mode: args.mode, lipsync: args.lipsync });
+      const outPath = args.out || path.join(stateRoot, 'exports', 'vidax_workflow.json');
+      const outDir = path.dirname(outPath);
+      fs.mkdirSync(outDir, { recursive: true });
+      fs.writeFileSync(outPath, JSON.stringify(workflow, null, 2), 'utf-8');
+      console.log(`Exported workflow to ${outPath}`);
     } catch (err) {
       exitWithError(err);
     }

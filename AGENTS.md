@@ -38,6 +38,9 @@ Scope: Repository root and all subdirectories.
 - LipSync-Validation verlangt einen Provider nur bei `lipsync.enable=true`; ein gesetzter Provider bei `enable=false` wird als ignoriert markiert.
 - Installer: Nach dem Clone/Update der Custom-Node-Repos werden vorhandene `requirements.txt` per ComfyUI-Python installiert (bevorzugt `${COMFYUI_DIR}/venv/Scripts/python.exe` auf Windows bzw. `${COMFYUI_DIR}/venv/bin/python`, Fallback `python`); Fehler werfen `PYTHON_DEPENDENCY_FAILED` inkl. Repo/Python-Details.
 
+## Workflows exportieren (Debug)
+- `node src/main.js export-workflow --mode image|video --lipsync on|off --out <pfad>` exportiert den exakt von VIDAX genutzten ComfyUI-Graph als UI-ladbare JSON-Datei (Default: `${VA_STATE_DIR}/exports/vidax_workflow.json`, Default-Mode `image`, Lipsync an). Die Datei kann direkt im ComfyUI-UI geladen werden und ist rein für Debug/Visualisierung; sie ist kein install-pflichtiges Asset und ändert den Runtime-Pfad nicht. Filename-Prefix im `SaveImage` lautet `vidax_export`.
+
 ## Commit & PR
 - Commit changes on the current branch and call `make_pr` with a PR message after committing.
 - Summaries should highlight which specs or docs were added or updated.
