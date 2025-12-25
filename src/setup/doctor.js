@@ -97,6 +97,7 @@ async function checkComfyui(client, options = {}) {
     requiredNodes.push('VHS_LoadVideo');
   }
   const missing = requiredNodes.filter((name) => !nodeNames.has(name));
+  const restartHint = missing.includes('VIDAX_Wav2Lip') ? 'ComfyUI restart required after installing custom nodes' : null;
   checks.push({
     name: 'comfyui:object_info',
     ok: infoOk && missing.length === 0,
@@ -104,10 +105,10 @@ async function checkComfyui(client, options = {}) {
     code: infoOk && missing.length === 0 ? null : missing.length ? 'COMFYUI_MISSING_NODES' : 'COMFYUI_UNAVAILABLE',
     error: infoOk
       ? missing.length
-        ? `missing nodes: ${missing.join(', ')}`
+        ? `missing nodes: ${missing.join(', ')}${restartHint ? `; ${restartHint}` : ''}`
         : null
       : objectInfo?.error || 'object_info unavailable',
-    details: Object.assign({ missing }, objectInfo || {}),
+    details: Object.assign({ missing, restart_required: !!restartHint, restart_hint: restartHint }, objectInfo || {}),
   });
 
   checks.push(...checkWav2LipWeights());
