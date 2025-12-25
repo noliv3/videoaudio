@@ -483,10 +483,20 @@ class ComfyUIClient {
   }
 
   async collectOutputs(promptId, destPaths = {}, options = {}) {
-    const outputs = options.outputs || [];
+    let outputs = options.outputs || [];
     const allowMissing = options.allowMissing || options.allow_missing || false;
+    let historyEntry = null;
+    if (!outputs.length && promptId) {
+      historyEntry = await this.fetchHistory(promptId, { directOnly: true });
+      const historyOutputs = historyEntry?.outputs || [];
+      if (historyOutputs.length > 0) {
+        outputs = historyOutputs;
+      }
+    }
     if (!outputs.length) {
-      const historyEntry = promptId ? await this.fetchHistory(promptId, { directOnly: true }) : null;
+      if (!historyEntry && promptId) {
+        historyEntry = await this.fetchHistory(promptId, { directOnly: true });
+      }
       const historyMessages = this.extractHistoryMessages(historyEntry?.raw);
       const nodeErrors = this.extractNodeErrors(historyEntry?.raw);
       const hasError = historyEntry?.historyError || this.hasHistoryError(historyEntry?.raw);
