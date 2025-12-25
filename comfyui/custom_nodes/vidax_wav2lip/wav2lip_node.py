@@ -1,6 +1,7 @@
-import importlib.util
 import os
+import sys
 import tempfile
+from pathlib import Path
 
 import numpy as np
 import soundfile as sf
@@ -38,36 +39,38 @@ class VIDAX_Wav2Lip:
 
     def __init__(self):
         self._cached_module = None
+        self._import_attempted = False
 
     def _resolve_paths(self):
-        base_dir = os.path.abspath(os.path.dirname(__file__))
-        custom_nodes_root = os.path.abspath(os.path.join(base_dir, os.pardir))
-        module_path = os.path.join(custom_nodes_root, 'ComfyUI_wav2lip', 'Wav2Lip', 'wav2lip_node.py')
-        model_path = os.path.join(custom_nodes_root, 'ComfyUI_wav2lip', 'Wav2Lip', 'checkpoints', 'wav2lip_gan.pth')
-        return module_path, model_path
+        custom_nodes_dir = Path(__file__).resolve().parents[1]
+        model_path = custom_nodes_dir / 'ComfyUI_wav2lip' / 'Wav2Lip' / 'checkpoints' / 'wav2lip_gan.pth'
+        return custom_nodes_dir, model_path
 
     def _load_wav2lip_module(self):
-        if self._cached_module is not None:
+        if self._cached_module is not None or self._import_attempted:
             return self._cached_module
-        module_path, _ = self._resolve_paths()
-        if not os.path.exists(module_path):
-            _warn('ComfyUI_wav2lip is missing; returning passthrough frames')
-            self._cached_module = None
-            return None
+
+        self._import_attempted = True
+        custom_nodes_dir, _ = self._resolve_paths()
+        paths = [
+            custom_nodes_dir / 'ComfyUI_wav2lip',
+            custom_nodes_dir / 'ComfyUI_wav2lip' / 'Wav2Lip',
+            custom_nodes_dir / 'ComfyUI_wav2lip' / 'wav2lip',
+        ]
+        for path in paths:
+            str_path = str(path)
+            if str_path not in sys.path:
+                sys.path.append(str_path)
+
         try:
-            spec = importlib.util.spec_from_file_location('vidax_wav2lip_external', module_path)
-            if not spec or not spec.loader:
-                _warn('Unable to load ComfyUI_wav2lip module; returning passthrough frames')
-                self._cached_module = None
-                return None
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            self._cached_module = module
-            return module
+            from Wav2Lip.wav2lip_node import wav2lip_  # type: ignore
         except Exception as exc:
             _warn(f'Failed to import ComfyUI_wav2lip: {exc}')
             self._cached_module = None
             return None
+
+        self._cached_module = wav2lip_
+        return self._cached_module
 
     def _to_mono_waveform(self, audio):
         sample_rate = None
@@ -122,15 +125,40 @@ class VIDAX_Wav2Lip:
         return tmp_path.name
 
     def _run_wav2lip(self, images, wav_path, mode, face_detect_batch):
-        module = self._load_wav2lip_module()
-        if module is None:
+        wav2lip_fn = self._load_wav2lip_module()
+        if wav2lip_fn is None:
             return images
         _, model_path = self._resolve_paths()
         try:
-            return module.wav2lip_(images, wav_path, face_detect_batch, mode, model_path)
+            return wav2lip_fn(images, wav_path, face_detect_batch, mode, model_path)
         except Exception as exc:
             _warn(f'wav2lip_ failed, returning passthrough frames: {exc}')
             return images
+
+    def _frames_to_list(self, frames):
+        if frames is None:
+            return None
+        if isinstance(frames, torch.Tensor):
+            tensor = frames.detach().cpu()
+            if tensor.dim() == 4 and tensor.shape[1] in (1, 3):
+                tensor = tensor.permute(0, 2, 3, 1)
+            if tensor.dtype != torch.uint8:
+                tensor = torch.clamp(tensor, 0, 255).byte()
+            return [frame.numpy() for frame in tensor]
+        if isinstance(frames, (list, tuple)):
+            converted = []
+            for frame in frames:
+                if isinstance(frame, torch.Tensor):
+                    sub_frames = self._frames_to_list(frame)
+                    if sub_frames:
+                        converted.extend(sub_frames)
+                else:
+                    np_frame = np.array(frame)
+                    if np_frame.dtype != np.uint8:
+                        np_frame = np.clip(np_frame, 0, 255).astype(np.uint8)
+                    converted.append(np_frame)
+            return converted
+        return frames
 
     def execute(self, images, audio, mode='sequential', face_detect_batch=8, on_no_face='passthrough'):
         normalized_mode = _normalize_mode(mode)
@@ -145,8 +173,15 @@ class VIDAX_Wav2Lip:
                     os.unlink(tmp_path)
                 except OSError:
                     pass
-        if not frames or (isinstance(frames, (list, tuple)) and len(frames) == 0):
+        frames = self._frames_to_list(frames)
+        if frames is None:
+            is_empty = True
+        elif isinstance(frames, (list, tuple)):
+            is_empty = len(frames) == 0
+        else:
+            is_empty = False
+        if is_empty:
             if on_no_face == 'error':
-                raise RuntimeError('VIDAX Wav2Lip produced no frames')
+                raise RuntimeError('Wav2Lip produced 0 frames (no face boxes)')
             return (images,)
         return (frames,)
