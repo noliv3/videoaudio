@@ -52,3 +52,6 @@ Skriptbarer Video+Audio-Runner: Job laden, validieren, optional über VIDAX star
 - [`docs/OPEN_DECISIONS.md`](docs/OPEN_DECISIONS.md)
 - [`docs/SETUP.md`](docs/SETUP.md)
 - [`docs/ASSETS.md`](docs/ASSETS.md)
+
+## Workflows exportieren (Debug)
+- `node src/main.js export-workflow --mode image|video --lipsync on|off --out <pfad>` exportiert den exakt von VIDAX genutzten ComfyUI-Graph als UI-ladbare JSON-Datei (Default: `${VA_STATE_DIR}/exports/vidax_workflow.json`, Default-Mode `image`, Lipsync an). Die Datei kann direkt im ComfyUI-UI geladen werden und ist rein für Debug/Visualisierung; sie ist kein install-pflichtiges Asset und ändert den Runtime-Pfad nicht. Filename-Prefix im `SaveImage` lautet `vidax_export`.
