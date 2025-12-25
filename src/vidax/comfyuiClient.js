@@ -331,7 +331,8 @@ class ComfyUIClient {
   extractHistoryEntry(data, promptId) {
     if (!data) return null;
     const candidate = data.history?.[promptId] || data[promptId] || data.history || data;
-    const outputs = this.normalizeOutputs(candidate?.outputs || candidate?.output || []);
+    const hasDirectMedia = candidate && (Array.isArray(candidate.images) || Array.isArray(candidate.videos));
+    const outputs = this.normalizeOutputs(candidate?.outputs || candidate?.output || (hasDirectMedia ? candidate : []));
     const historyError = this.extractHistoryError(candidate);
     const done = Boolean(candidate?.status?.completed || candidate?.status?.done || outputs.length > 0);
     return { done, outputs, raw: candidate, historyError };
