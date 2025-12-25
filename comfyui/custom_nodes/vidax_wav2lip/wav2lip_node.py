@@ -12,7 +12,28 @@ except Exception:
     base_node = None
 
 
-class VidaxWav2Lip:
+class VIDAX_LoadAudio:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "audio_path": ("STRING", {"forceInput": True}),
+            }
+        }
+
+    RETURN_TYPES = ("AUDIO",)
+    FUNCTION = "load"
+    CATEGORY = "VIDAX/LipSync"
+
+    def load(self, audio_path):
+        data, sample_rate = sf.read(audio_path, always_2d=False)
+        if isinstance(data, np.ndarray) and data.ndim > 1:
+            data = data.mean(axis=1)
+        waveform = torch.tensor(np.array(data, dtype=np.float32))
+        return ((sample_rate, waveform),)
+
+
+class VIDAX_Wav2Lip:
     @classmethod
     def INPUT_TYPES(cls):
         return {

@@ -189,6 +189,9 @@ async function downloadModel(targetPath, sources) {
 }
 
 async function installComfyCustomNodes() {
+  if (!process.env.COMFYUI_DIR) {
+    throw new AppError('INPUT_NOT_FOUND', 'COMFYUI_DIR is required to install custom nodes', { env: 'COMFYUI_DIR' });
+  }
   const customNodesDir = resolveCustomNodesDir();
   fs.mkdirSync(customNodesDir, { recursive: true });
   const vidaxNodeSource = path.join(process.cwd(), 'comfyui', 'custom_nodes', 'vidax_wav2lip');
@@ -226,6 +229,7 @@ async function installComfyCustomNodes() {
   fs.rmSync(vidaxNodeTarget, { recursive: true, force: true });
   fs.cpSync(vidaxNodeSource, vidaxNodeTarget, { recursive: true });
   const vidaxNode = { source: vidaxNodeSource, target: vidaxNodeTarget, action: 'copied' };
+  console.log(`installed custom node vidax_wav2lip -> ${vidaxNodeTarget}`);
 
   return {
     base_dir: customNodesDir,
