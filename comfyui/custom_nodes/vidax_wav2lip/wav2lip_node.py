@@ -20,6 +20,54 @@ def _normalize_mode(mode):
     return 'repetitive' if mode == 'repetitive' else 'sequential'
 
 
+def images_to_uint8_list(images):
+    if isinstance(images, torch.Tensor):
+        tensor = images.detach().float().cpu()
+        if tensor.ndim == 3:
+            tensor = tensor.unsqueeze(0)
+        arr = (tensor.numpy() * 255.0).clip(0, 255).astype(np.uint8)
+        return [np.ascontiguousarray(arr[i]) for i in range(arr.shape[0])]
+    if isinstance(images, np.ndarray):
+        array = images
+        if array.ndim == 3:
+            array = array[None, ...]
+        if array.dtype != np.uint8:
+            array = (array.astype(np.float32) * 255.0).clip(0, 255).astype(np.uint8)
+        return [np.ascontiguousarray(array[i]) for i in range(array.shape[0])]
+    if isinstance(images, (list, tuple)):
+        converted = []
+        for item in images:
+            if isinstance(item, torch.Tensor):
+                converted.append(np.ascontiguousarray((item.detach().float().cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)))
+            else:
+                np_item = np.asarray(item)
+                if np_item.dtype != np.uint8:
+                    np_item = (np_item.astype(np.float32) * 255.0).clip(0, 255).astype(np.uint8)
+                converted.append(np.ascontiguousarray(np_item))
+        return converted
+    raise TypeError(f'Unsupported IMAGE type: {type(images)}')
+
+
+def uint8_list_to_images(frames_uint8):
+    if isinstance(frames_uint8, torch.Tensor):
+        tensor = frames_uint8
+        if tensor.dtype != torch.float32:
+            tensor = tensor.float()
+        if tensor.ndim == 4 and tensor.shape[1] in (1, 3) and tensor.shape[-1] not in (1, 3):
+            tensor = tensor.permute(0, 2, 3, 1)
+        return tensor.clamp(0, 1)
+    if isinstance(frames_uint8, np.ndarray):
+        array = frames_uint8
+        if array.ndim == 3:
+            array = array[None, ...]
+        return torch.from_numpy(array.astype(np.float32) / 255.0)
+    if isinstance(frames_uint8, (list, tuple)):
+        if len(frames_uint8) == 0:
+            return torch.empty((0,))
+        return torch.from_numpy(np.stack([np.asarray(frame, dtype=np.uint8) for frame in frames_uint8], axis=0).astype(np.float32) / 255.0)
+    raise TypeError(f'Unsupported frames type: {type(frames_uint8)}')
+
+
 class VIDAX_Wav2Lip:
     @classmethod
     def INPUT_TYPES(cls):
@@ -124,64 +172,47 @@ class VIDAX_Wav2Lip:
         sf.write(tmp_path.name, array16k, TARGET_SAMPLE_RATE, subtype='PCM_16')
         return tmp_path.name
 
-    def _run_wav2lip(self, images, wav_path, mode, face_detect_batch):
+    def _ensure_torch_images(self, images):
+        if isinstance(images, torch.Tensor):
+            tensor = images.detach().float()
+            if tensor.ndim == 3:
+                tensor = tensor.unsqueeze(0)
+            if tensor.ndim == 4 and tensor.shape[1] in (1, 3) and tensor.shape[-1] not in (1, 3):
+                tensor = tensor.permute(0, 2, 3, 1)
+            return tensor
+        return uint8_list_to_images(images_to_uint8_list(images)).float()
+
+    def _run_wav2lip(self, images_uint8, wav_path, mode, face_detect_batch, passthrough):
+        if not wav_path or not os.path.exists(wav_path):
+            return passthrough
         wav2lip_fn = self._load_wav2lip_module()
         if wav2lip_fn is None:
-            return images
+            return passthrough
         _, model_path = self._resolve_paths()
         try:
-            return wav2lip_fn(images, wav_path, face_detect_batch, mode, model_path)
+            return wav2lip_fn(images_uint8, wav_path, face_detect_batch, mode, model_path)
         except Exception as exc:
-            _warn(f'wav2lip_ failed, returning passthrough frames: {exc}')
-            return images
-
-    def _frames_to_list(self, frames):
-        if frames is None:
-            return None
-        if isinstance(frames, torch.Tensor):
-            tensor = frames.detach().cpu()
-            if tensor.dim() == 4 and tensor.shape[1] in (1, 3):
-                tensor = tensor.permute(0, 2, 3, 1)
-            if tensor.dtype != torch.uint8:
-                tensor = torch.clamp(tensor, 0, 255).byte()
-            return [frame.numpy() for frame in tensor]
-        if isinstance(frames, (list, tuple)):
-            converted = []
-            for frame in frames:
-                if isinstance(frame, torch.Tensor):
-                    sub_frames = self._frames_to_list(frame)
-                    if sub_frames:
-                        converted.extend(sub_frames)
-                else:
-                    np_frame = np.array(frame)
-                    if np_frame.dtype != np.uint8:
-                        np_frame = np.clip(np_frame, 0, 255).astype(np.uint8)
-                    converted.append(np_frame)
-            return converted
-        return frames
+            _warn(f'wav2lip_ failed, passthrough: {exc}')
+            return passthrough
 
     def execute(self, images, audio, mode='sequential', face_detect_batch=8, on_no_face='passthrough'):
         normalized_mode = _normalize_mode(mode)
+        torch_images = self._ensure_torch_images(images)
         sample_rate, mono_audio = self._to_mono_waveform(audio)
         tmp_path = None
         try:
             tmp_path = self._write_temp_wav((sample_rate, mono_audio))
-            frames = self._run_wav2lip(images, tmp_path, normalized_mode, face_detect_batch)
+            frames = self._run_wav2lip(images_to_uint8_list(torch_images), tmp_path, normalized_mode, face_detect_batch, torch_images)
         finally:
             if tmp_path and os.path.exists(tmp_path):
                 try:
                     os.unlink(tmp_path)
                 except OSError:
                     pass
-        frames = self._frames_to_list(frames)
-        if frames is None:
-            is_empty = True
-        elif isinstance(frames, (list, tuple)):
-            is_empty = len(frames) == 0
-        else:
-            is_empty = False
+        frames_tensor = None if frames is None else uint8_list_to_images(frames)
+        is_empty = frames_tensor is None or (isinstance(frames_tensor, torch.Tensor) and (frames_tensor.numel() == 0 or frames_tensor.shape[0] == 0))
         if is_empty:
             if on_no_face == 'error':
                 raise RuntimeError('Wav2Lip produced 0 frames (no face boxes)')
-            return (images,)
-        return (frames,)
+            return (torch_images,)
+        return (frames_tensor,)
